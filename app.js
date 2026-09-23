@@ -503,7 +503,7 @@ function currentVersion() {
       if (v) return v;
     }
   } catch (_) { /* 忽略 */ }
-  return '1.2'; // 网页版：与 manifest versionName 同步维护
+  return '1.3'; // 网页版：与 manifest versionName 同步维护
 }
 
 let updateUrl = '';
@@ -533,6 +533,7 @@ async function checkUpdate(silent) {
     if (mask) {
       $('updVer').textContent = 'v' + cur + ' → ' + remote;
       $('updBody').textContent = String(rel.body || rel.name || '').slice(0, 300);
+      setUpdateState('idle');
       mask.hidden = false;
     } else if (!silent) {
       toast('发现新版本 ' + remote);
@@ -542,21 +543,71 @@ async function checkUpdate(silent) {
   }
 }
 
+/* 更新进度：原生下载器 / 安装回调 */
+function setUpdateState(mode, text) {
+  const prog = $('updProgress');
+  if (prog) prog.hidden = mode === 'idle';
+  const go = $('updGo');
+  const later = $('updLater');
+  if (go) go.disabled = mode !== 'idle';
+  if (later) later.disabled = mode !== 'idle';
+  if (mode === 'downloading') {
+    const bar = $('updBar');
+    if (bar) bar.style.width = '0%';
+    const pct = $('updPct');
+    if (pct) pct.textContent = text || '准备下载…';
+  }
+}
+
+window.__onUpdateProgress = function (p) {
+  const prog = $('updProgress');
+  if (!prog || prog.hidden) return;
+  const n = Math.max(0, Math.min(100, Math.round(Number(p) || 0)));
+  const bar = $('updBar');
+  if (bar) bar.style.width = n + '%';
+  const pct = $('updPct');
+  if (pct) pct.textContent = '下载中 ' + n + '%';
+};
+
+window.__onUpdateState = function (state, msg) {
+  const prog = $('updProgress');
+  const bar = $('updBar');
+  const pct = $('updPct');
+  const mask = $('updateMask');
+  if (state === 'ready') {
+    if (bar) bar.style.width = '100%';
+    if (pct) pct.textContent = msg || '下载完成，等待安装…';
+    // 系统安装界面已盖到前台，几秒后自动收起弹窗
+    setTimeout(() => { setUpdateState('idle'); if (mask) mask.hidden = true; }, 3500);
+  } else if (state === 'success') {
+    setUpdateState('idle');
+    if (mask) mask.hidden = true;
+    toast('新版本安装成功，重启应用后生效');
+  } else if (state === 'failed' || state === 'aborted') {
+    setUpdateState('idle');
+    if (prog) prog.hidden = true;
+    toast(msg || '更新未完成，可点“立即更新”重试');
+  }
+};
+
 function wireUpdate() {
   const mask = $('updateMask');
   if (!mask) return;
   const label = $('verLabel');
   if (label) label.textContent = 'v' + currentVersion();
 
-  $('updLater').addEventListener('click', () => { mask.hidden = true; });
-  $('updGo').addEventListener('click', () => {
+  $('updLater').addEventListener('click', () => {
+    if ($('updLater').disabled) return;
     mask.hidden = true;
-    if (window.AndroidIcy && window.AndroidIcy.applyUpdate) {
-      try { window.AndroidIcy.applyUpdate(updateUrl); }
-      catch (_) { toast('调起安装失败，请稍后重试'); }
-    } else {
-      location.href = updateUrl; // 网页版：跳转下载
+  });
+  $('updGo').addEventListener('click', () => {
+    if (!window.AndroidIcy || !window.AndroidIcy.applyUpdate) {
+      location.href = updateUrl; // 网页版：直接跳转下载
+      return;
     }
+    setUpdateState('downloading', '准备下载…');
+    try { window.AndroidIcy.applyUpdate(updateUrl); }
+    catch (_) { setUpdateState('idle'); toast('调起更新失败，请稍后重试'); }
   });
   const btn = $('checkUpdateBtn');
   if (btn) btn.addEventListener('click', () => checkUpdate(false));

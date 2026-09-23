@@ -459,6 +459,34 @@ footer {
   color: #fff;
 }
 
+/* 更新进度条 */
+.upd-progress { margin: 0 0 14px; }
+
+.upd-progress[hidden] { display: none; }
+
+.upd-bar {
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.upd-bar i {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: var(--grad);
+  transition: width 0.2s ease;
+}
+
+.upd-pct {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+}
+
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
