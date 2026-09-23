@@ -13,8 +13,8 @@
 const STATIONS = [
   {
     id: 'huayu',
-    name: '拾光 · 华语主打',
-    desc: '华语流行精选 · 当下最热金曲',
+    name: 'FM891 线上音乐台',
+    desc: '华语流行 · 网络电台',
     url: 'https://lhttp.qtfm.cn/live/20500215/64k.mp3',
   },
   {
@@ -522,7 +522,7 @@ function currentVersion() {
       if (v) return v;
     }
   } catch (_) { /* 忽略 */ }
-  return '1.4'; // 网页版：与 manifest versionName 同步维护
+  return '1.5'; // 网页版：与 manifest versionName 同步维护
 }
 
 let updateUrl = '';
