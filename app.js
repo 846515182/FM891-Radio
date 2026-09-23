@@ -15,7 +15,9 @@ const STATIONS = [
     id: 'huayu',
     name: 'FM891 线上音乐台',
     desc: '华语流行 · 网络电台',
-    url: 'https://lhttp.qtfm.cn/live/20500215/64k.mp3',
+    // 原源 qtfm 20500215 于 2026-09-24 起全线路 404（台方下线/迁移），
+    // 暂用星空电台 STAR RADIO（votes=534，music）顶替；若原线路恢复可换回。
+    url: 'https://lhttp-hw.qtfm.cn/live/5022379/64k.mp3',
   },
   {
     id: 'hits',
@@ -269,7 +271,7 @@ async function play() {
     shouldPlay = false;
     updatePlayUI();
     setStatus('', '点击播放开始收听');
-    toast('播放失败：请检查网络，或在 app.js 中更换直播地址');
+    toast('播放失败：当前频道源暂时不可用，换个频道试试或稍后重试');
     if (window.AndroidIcy) {
       try { window.AndroidIcy.stop(); } catch (_) { /* 忽略 */ }
     }
@@ -522,7 +524,7 @@ function currentVersion() {
       if (v) return v;
     }
   } catch (_) { /* 忽略 */ }
-  return '1.5'; // 网页版：与 manifest versionName 同步维护
+  return '1.6'; // 网页版：与 manifest versionName 同步维护
 }
 
 let updateUrl = '';
