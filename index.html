@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0d0821" />
+  <title>FM891 音乐电台</title>
+  <meta name="description" content="FM891 音乐电台 — 手机在线音乐直播，可添加到主屏幕的网页 App" />
+
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/png" href="icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="FM891" />
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="bg-glow" aria-hidden="true"></div>
+
+  <main class="app">
+    <header class="top">
+      <div class="brand">
+        <span class="brand-logo">FM<span>891</span></span>
+        <span class="live-dot" id="liveDot" hidden>● 直播中</span>
+      </div>
+      <p class="slogan">音乐电台 · MUSIC RADIO</p>
+    </header>
+
+    <section class="stage">
+      <div class="cover" id="cover">
+        <span class="status" id="status">已暂停</span>
+        <div class="cover-ring" aria-hidden="true"></div>
+        <svg class="note" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+        </svg>
+        <div class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+      </div>
+
+      <h1 id="stationName">FM891 线上音乐台</h1>
+      <p class="desc" id="stationDesc">点击下方按钮开始收听</p>
+      <p class="now-title" id="nowTitle"></p>
+    </section>
+
+    <section class="controls">
+      <button class="round-btn" id="prevBtn" type="button" aria-label="上一个频道">
+        <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6L18 18V6z"/></svg>
+      </button>
+      <button class="play-btn" id="playBtn" type="button" aria-label="播放">
+        <svg class="ic-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+        <svg class="ic-pause" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+      </button>
+      <button class="round-btn" id="nextBtn" type="button" aria-label="下一个频道">
+        <svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+      </button>
+    </section>
+
+    <section class="volume" aria-label="音量">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM5 9v6h4l5 5V4L9 9H5z"/></svg>
+      <input id="volume" type="range" min="0" max="1" step="0.01" value="0.85" aria-label="调节音量" />
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+    </section>
+
+    <h2 class="sec-title">📻 精选电台</h2>
+    <nav class="stations" id="stationList" aria-label="频道列表"></nav>
+
+    <section class="discover card">
+      <h2>🔎 发现电台</h2>
+      <p class="hint-sub">全球 8 万+ 网络电台目录 · Radio Browser（radiocast.co 同款数据源）</p>
+
+      <form class="search-bar" id="searchForm">
+        <input id="searchInput" type="search" enterkeyhint="search" autocomplete="off"
+               placeholder="搜电台名或风格，如 jazz、华语…" aria-label="搜索电台" />
+        <button id="searchBtn" type="submit">搜索</button>
+      </form>
+
+      <div class="chips" id="tagChips" role="group" aria-label="风格筛选">
+        <button class="chip" type="button">全球热门</button>
+        <button class="chip" type="button" data-tag="pop">流行</button>
+        <button class="chip" type="button" data-tag="rock">摇滚</button>
+        <button class="chip" type="button" data-tag="jazz">爵士</button>
+        <button class="chip" type="button" data-tag="electronic">电子</button>
+        <button class="chip" type="button" data-tag="classical">古典</button>
+        <button class="chip" type="button" data-tag="folk">民谣</button>
+        <button class="chip" type="button" data-tag="chinese">华语</button>
+        <button class="chip" type="button" data-countrycode="CN">中国台</button>
+      </div>
+
+      <p class="hint" id="searchHint">点上方标签或输入关键词开始搜索，结果点击即可播放</p>
+      <div class="results" id="searchResults"></div>
+    </section>
+
+    <footer>
+      FM891 音乐电台 · 精选全球网络电台<br />
+      <button class="link-btn" id="checkUpdateBtn" type="button">
+        检查更新 · <span id="verLabel">v…</span>
+      </button>
+    </footer>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <div class="dialog-mask" id="updateMask" hidden>
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="updTitle">
+      <h3 id="updTitle">发现新版本 🎉</h3>
+      <p class="dialog-ver" id="updVer"></p>
+      <p class="dialog-body" id="updBody"></p>
+      <div class="dialog-actions">
+        <button class="ghost" id="updLater" type="button">暂不更新</button>
+        <button class="primary" id="updGo" type="button">立即更新</button>
+      </div>
+    </div>
+  </div>
+
+  <audio id="audio" preload="none"></audio>
+  <script src="app.js"></script>
+</body>
+</html>
