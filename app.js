@@ -1,67 +1,86 @@
 'use strict';
 
 /* ============================================================
- * FM891 音乐电台 —— 频道配置
+ * 拾光电台 FM89.1 —— 频道配置
+ * 品牌：拾光电台 · 拾起耳朵里的好时光
  * 想换成你自己的电台？把 url 改成你的直播地址即可，例如：
  *   { id: 'my', name: '我的电台', desc: '自定义频道', url: 'https://xxx.com/live.m3u8' }
  * 支持格式：.mp3 / .aac 直链，以及 .m3u8（HLS，自动加载 hls.js）
  * 注意：网页若部署在 https，直播源也必须是 https，
  *       否则浏览器会以“混合内容”为由拦截播放。
+ * 全部频道均经实测（HTTP 200 + 有效码率）后收录。
  * ============================================================ */
-/* 注：所有频道均已实测可播（浏览器 UA + https）。SomaFM 源已失效（403），勿用。 */
 const STATIONS = [
   {
-    id: 'fm891',
-    name: 'FM891 线上音乐台',
-    desc: '华语流行 · 网络电台（蜻蜓FM）',
+    id: 'huayu',
+    name: '拾光 · 华语主打',
+    desc: '华语流行精选 · 当下最热金曲',
     url: 'https://lhttp.qtfm.cn/live/20500215/64k.mp3',
   },
   {
+    id: 'hits',
+    name: '华语流行热歌',
+    desc: '热门华语新歌连播 · 持续更新',
+    url: 'https://das-edge11-live365-dal03.cdnstream.com/a57743_2',
+  },
+  {
+    id: 'classic-pop',
+    name: '经典流行',
+    desc: '华语经典流行 · 老歌情怀',
+    url: 'https://lhttp.qtfm.cn/live/4938/64k.mp3',
+  },
+  {
+    id: 'bj-music',
+    name: '音乐前线',
+    desc: '华语乐坛新歌与经典并行',
+    url: 'https://lhttp.qtfm.cn/live/332/64k.mp3',
+  },
+  {
+    id: 'years',
+    name: '年代金曲',
+    desc: '上世纪华语年代金曲重温',
+    url: 'https://lhttp-hw.qtfm.cn/live/1223/64k.mp3',
+  },
+  {
     id: 'main',
-    name: 'Radio Paradise 主频道',
-    desc: '美国 · 全球流行金曲，24 小时不断电',
+    name: '环球金曲',
+    desc: '全球流行金曲 · 24 小时不断电',
     url: 'https://stream.radioparadise.com/mp3-192',
   },
   {
-    id: 'mellow',
-    name: 'Radio Paradise 轻音乐',
-    desc: '柔缓轻音乐，适合放松与睡眠',
-    url: 'https://stream.radioparadise.com/mellow-192',
-  },
-  {
     id: 'rock',
-    name: 'Radio Paradise 摇滚',
+    name: '摇滚现场',
     desc: '经典与独立摇滚连播',
     url: 'https://stream.radioparadise.com/rock-192',
   },
   {
-    id: 'global',
-    name: 'Radio Paradise 环球',
-    desc: '世界各地音乐精选',
-    url: 'https://stream.radioparadise.com/global-192',
+    id: 'sleep',
+    name: '轻音乐 · 晚安',
+    desc: '柔缓轻音乐 · 放松与睡眠',
+    url: 'https://stream.radioparadise.com/mellow-192',
   },
   {
     id: 'fip',
-    name: 'FIP 法国音乐',
-    desc: '法国公营台 · 爵士 / 放克 / 世界音乐精选',
+    name: '爵士放克',
+    desc: '爵士 / 放克 / 世界律动精选',
     url: 'https://icecast.radiofrance.fr/fip-midfi.mp3',
   },
   {
     id: 'fip-jazz',
-    name: 'FIP Jazz 法国爵士',
-    desc: '法国公营台 · 精品爵士',
+    name: '深夜爵士',
+    desc: '精品爵士 · 慵懒夜时光',
     url: 'https://icecast.radiofrance.fr/fipjazz-midfi.mp3',
   },
   {
     id: 'dance',
-    name: 'Dance Wave! 舞曲',
-    desc: '电子节拍与深夜舞曲混音',
+    name: '电音舞曲',
+    desc: '电子节拍 · 深夜舞曲混音',
     url: 'https://dancewave.online/dance.mp3',
   },
   {
     id: 'eu-pop',
-    name: 'MANGORADIO',
-    desc: '德国电台 · 流行金曲',
+    name: '欧陆流行',
+    desc: '欧陆流行金曲精选',
     url: 'https://mangoradio.stream.laut.fm/mangoradio',
   },
 ];
@@ -338,7 +357,7 @@ function updateMediaSession() {
     navigator.mediaSession.metadata = new MediaMetadata({
       title: nowTitle || s.name,
       artist: nowTitle ? s.name : s.desc,
-      album: nowTitle ? 'FM891 音乐电台 · ' + s.name : 'FM891 音乐电台',
+      album: nowTitle ? '拾光电台 FM89.1 · ' + s.name : '拾光电台 FM89.1',
       artwork: [
         { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png' },
         { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' },
@@ -503,7 +522,7 @@ function currentVersion() {
       if (v) return v;
     }
   } catch (_) { /* 忽略 */ }
-  return '1.3'; // 网页版：与 manifest versionName 同步维护
+  return '1.4'; // 网页版：与 manifest versionName 同步维护
 }
 
 let updateUrl = '';

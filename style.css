@@ -77,6 +77,15 @@ body {
   color: var(--muted);
 }
 
+.brand-avatar {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(255, 255, 255, 0.55);
+  box-shadow: 0 6px 18px rgba(139, 92, 246, 0.5);
+}
+
 /* ---------- 封面 / 状态 ---------- */
 .stage { text-align: center; margin-top: 22px; }
 

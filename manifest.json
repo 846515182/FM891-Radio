@@ -1,7 +1,7 @@
 {
-  "name": "FM891 音乐电台",
-  "short_name": "FM891",
-  "description": "FM891 音乐电台 — 手机在线音乐直播",
+  "name": "拾光电台 FM89.1",
+  "short_name": "拾光电台",
+  "description": "拾光电台 FM89.1 — 拾起耳朵里的好时光，手机在线音乐直播",
   "lang": "zh-CN",
   "start_url": "./index.html",
   "scope": "./",

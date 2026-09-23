@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#0d0821" />
-  <title>FM891 音乐电台</title>
-  <meta name="description" content="FM891 音乐电台 — 手机在线音乐直播，可添加到主屏幕的网页 App" />
+  <title>拾光电台 FM89.1</title>
+  <meta name="description" content="拾光电台 FM89.1 — 拾起耳朵里的好时光，手机在线音乐直播" />
 
   <link rel="manifest" href="manifest.json" />
   <link rel="icon" type="image/png" href="icons/icon-192.png" />
@@ -13,7 +13,7 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="FM891" />
+  <meta name="apple-mobile-web-app-title" content="拾光电台" />
 
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -23,10 +23,11 @@
   <main class="app">
     <header class="top">
       <div class="brand">
-        <span class="brand-logo">FM<span>891</span></span>
+        <img class="brand-avatar" src="icons/icon-192.png" alt="拾光电台" />
+        <span class="brand-logo">拾光<span>FM89.1</span></span>
         <span class="live-dot" id="liveDot" hidden>● 直播中</span>
       </div>
-      <p class="slogan">音乐电台 · MUSIC RADIO</p>
+      <p class="slogan">拾起耳朵里的好时光 · MUSIC RADIO</p>
     </header>
 
     <section class="stage">
@@ -39,7 +40,7 @@
         <div class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
       </div>
 
-      <h1 id="stationName">FM891 线上音乐台</h1>
+      <h1 id="stationName">拾光 · 华语主打</h1>
       <p class="desc" id="stationDesc">点击下方按钮开始收听</p>
       <p class="now-title" id="nowTitle"></p>
     </section>
@@ -67,7 +68,7 @@
     <nav class="stations" id="stationList" aria-label="频道列表"></nav>
 
     <footer>
-      FM891 音乐电台 · 精选全球网络电台<br />
+      拾光电台 FM89.1 · 拾起耳朵里的好时光<br />
       <button class="link-btn" id="checkUpdateBtn" type="button">
         检查更新 · <span id="verLabel">v…</span>
       </button>

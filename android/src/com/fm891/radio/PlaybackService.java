@@ -19,17 +19,19 @@ import android.os.IBinder;
  * Foreground media service.
  *
  * - Raises the process to "media playback" priority so audio survives
- *   screen-off / app switching (fixes: playback pauses after locking).
+ *   screen-off / app switching.
  * - Hosts a system MediaSession + MediaStyle notification showing station and
- *   current song on the lock screen, with play/pause controls
- *   (fixes: no playback info visible after locking).
+ *   current song on the lock screen, with play/pause controls.
+ *
+ * Brand: 拾光电台 FM89.1 ("pick up the good times in your ears").
  */
 public class PlaybackService extends Service {
 
     private static final String CHANNEL_ID = "radio_playback";
     private static final int NOTIF_ID = 891;
+    private static final String BRAND = "拾光电台 FM89.1";
 
-    private static volatile String station = "FM891 音乐电台";
+    private static volatile String station = "拾光电台 FM89.1";
     private static volatile String song = "";
     private static volatile boolean playingFlag = true;
     private static volatile PlaybackService instance;
@@ -84,7 +86,7 @@ public class PlaybackService extends Service {
             nm.createNotificationChannel(ch);
         }
 
-        session = new MediaSession(this, "FM891");
+        session = new MediaSession(this, "ShiguangFM");
         session.setFlags(MediaSession.FLAG_HANDLES_MEDIA_BUTTONS
                 | MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS);
         session.setCallback(new MediaSession.Callback() {
@@ -141,7 +143,7 @@ public class PlaybackService extends Service {
                     .putString(MediaMetadata.METADATA_KEY_TITLE, title)
                     .putString(MediaMetadata.METADATA_KEY_ARTIST,
                             song.length() > 0 ? station : "网络直播")
-                    .putString(MediaMetadata.METADATA_KEY_ALBUM, "FM891 音乐电台");
+                    .putString(MediaMetadata.METADATA_KEY_ALBUM, BRAND);
             try {
                 int iconId = appIcon();
                 if (iconId != 0) {
@@ -172,7 +174,7 @@ public class PlaybackService extends Service {
 
     private Notification build() {
         String title = song.length() > 0 ? song : station;
-        String sub = song.length() > 0 ? station : "正在播放 · FM891 音乐电台";
+        String sub = song.length() > 0 ? station : "正在播放 · " + BRAND;
 
         int icon = appIcon();
         if (icon == 0) icon = android.R.drawable.ic_media_play;
