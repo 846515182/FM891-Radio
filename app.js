@@ -22,8 +22,10 @@ const STATIONS = [
   {
     id: 'hits',
     name: '华语流行热歌',
-    desc: '热门华语新歌连播 · 持续更新',
-    url: 'https://das-edge11-live365-dal03.cdnstream.com/a57743_2',
+    desc: '华语热门金曲 · 24 小时连播',
+    // 原源 Live365（美国跨境 CDN）断流严重，2026-09-24 换为国内
+    // 四川音乐广播线路（qtfm 稳定平台，与不断流的其他台同源，实测 165kbps）。
+    url: 'https://lhttp.qtfm.cn/live/1110/64k.mp3',
   },
   {
     id: 'classic-pop',
@@ -145,6 +147,13 @@ function renderStations() {
     btn.addEventListener('click', () => selectStation(i, true));
     stationListEl.appendChild(btn);
   });
+  // 胶囊条：让选中频道始终在可视区内（仅横向容器滚动，不拉动页面）。
+  // 初始渲染时第一个胶囊 offsetLeft≈0，目标值为负会被钳到 0，不会产生位移。
+  const act = stationListEl.querySelector('.station.active');
+  if (act) {
+    const target = act.offsetLeft - (stationListEl.clientWidth - act.offsetWidth) / 2;
+    stationListEl.scrollLeft = Math.max(0, target);
+  }
 }
 
 function updateNowPlaying() {
@@ -524,7 +533,7 @@ function currentVersion() {
       if (v) return v;
     }
   } catch (_) { /* 忽略 */ }
-  return '1.8'; // 网页版：与 manifest versionName 同步维护
+  return '1.9'; // 网页版：与 manifest versionName 同步维护
 }
 
 let updateUrl = '';
