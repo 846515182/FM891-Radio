@@ -533,7 +533,7 @@ function currentVersion() {
       if (v) return v;
     }
   } catch (_) { /* 忽略 */ }
-  return '1.10'; // 网页版：与 manifest versionName 同步维护
+  return '1.11'; // 网页版：与 manifest versionName 同步维护
 }
 
 let updateUrl = '';
@@ -653,16 +653,18 @@ wireUpdate();
  * 即当前在线人数。断线时 broker 用遗嘱（LWT，空载荷）自动删除自己的条目，
  * 对端收到空载荷转发 → 立刻从计数中移除。
  * 时间戳一律用本地接收时间（peer 时钟不可信）；120 秒未见心跳视为过期。
- * 主用 EMQX（国内快），连不上自动降级 Mosquitto 公共 WSS。
- * 纯可选功能：任何异常静默，徽章不显示，绝不影响收音机本身。
+ * 主用 EMQX（国内快），失败降级 Mosquitto 公共 WSS，一轮全败 45 秒后重试。
+ * 徽章状态自见即显：… 连接中 / 数字在线 / – 线路暂不可用（绝不整体隐藏）。
+ * 关键防护：所有事件回调校验 client !== c，杜绝旧连接迟到事件误杀新连接
+ *（v1.10 的 offline+close 双事件竞态导致切换后彻底静默，此为根因修复）。
  */
 (function onlinePresence() {
   try {
     if (typeof mqtt === 'undefined') return;
 
     const NS = 'fm891-radio/online';
-    const HEARTBEAT = 30000;   // 自己的心跳间隔
-    const STALE = 120000;      // 对端条目过期阈值
+    const HEARTBEAT = 30000;
+    const STALE = 120000;
     const BROKERS = [
       'wss://broker.emqx.io:8084/mqtt',
       'wss://test.mosquitto.org:8081/mqtt',
@@ -688,20 +690,25 @@ wireUpdate();
     let gotConnect = false;
     let switching = false;
     let attempt = 0;
+    let failTimer = null;
+    let state = 'connecting'; // connecting | online | failed
 
     function render() {
-      if (!pill || !client || !gotConnect) return;
-      const now = Date.now();
-      let n = 0;
-      Object.keys(peers).forEach((k) => {
-        if (now - peers[k] <= STALE) n++;
-      });
-      if (countEl) countEl.textContent = String(n);
+      if (!pill || !countEl) return;
+      if (state === 'online') {
+        const now = Date.now();
+        let n = 0;
+        Object.keys(peers).forEach((k) => {
+          if (now - peers[k] <= STALE) n++;
+        });
+        countEl.textContent = String(n);
+      } else if (state === 'connecting') {
+        countEl.textContent = '…';
+      } else {
+        countEl.textContent = '–';
+      }
       pill.hidden = false;
-    }
-
-    function hidePill() {
-      if (pill) pill.hidden = true;
+      try { pill.classList.toggle('dim', state === 'failed'); } catch (_) { /* 忽略 */ }
     }
 
     function publishPresence() {
@@ -711,18 +718,36 @@ wireUpdate();
           client.publish(myTopic, JSON.stringify({ t: peers[myTopic] }), { retain: true, qos: 0 });
         } catch (_) { /* 忽略 */ }
       }
+      render();
+    }
+
+    function clearFailTimer() {
+      if (failTimer) { clearTimeout(failTimer); failTimer = null; }
     }
 
     function switchBroker() {
       if (switching) return;
       switching = true;
+      clearFailTimer();
       const prev = client;
       client = null;
       gotConnect = false;
       attempt = 0;
       try { if (prev) prev.end(true); } catch (_) { /* 忽略 */ }
-      if (brokerIdx + 1 < BROKERS.length) {
-        brokerIdx++;
+      const next = brokerIdx + 1;
+      if (next >= BROKERS.length) {
+        // 本轮线路全部失败 → 显示 –，45 秒后从头轮换重试
+        state = 'failed';
+        render();
+        setTimeout(() => {
+          brokerIdx = 0;
+          switching = false;
+          state = 'connecting';
+          render();
+          connectAt();
+        }, 45000);
+      } else {
+        brokerIdx = next;
         connectAt();
       }
     }
@@ -744,44 +769,60 @@ wireUpdate();
       }
       client = c;
       switching = false;
+      render();
 
-      // 静默黑洞兜底：9 秒连不上就换下一个 broker
-      const failTimer = setTimeout(() => {
-        if (!gotConnect && !switching) switchBroker();
+      // 静默黑洞兜底：9 秒连不上换线路（身份校验防误伤新连接）
+      failTimer = setTimeout(() => {
+        if (client === c && !gotConnect) switchBroker();
       }, 9000);
 
       c.on('connect', () => {
-        clearTimeout(failTimer);
+        if (client !== c) return; // 过期连接，忽略
+        clearFailTimer();
         gotConnect = true;
         attempt = 0;
+        state = 'online';
         try { c.subscribe(NS + '/#', { qos: 0 }); } catch (_) { /* 忽略 */ }
         publishPresence();
-        render();
       });
-      c.on('message', (topic, payload) => {
-        if (topic === myTopic) return;
+      c.on('message', (topic, payload, packet) => {
+        if (client !== c || topic === myTopic) return;
         try {
           const s = payload ? payload.toString() : '';
-          if (s) peers[topic] = Date.now();   // 收到心跳（含 retained 回放）→ 记本地时间
-          else delete peers[topic];           // 空载荷 = 对方已下线
+          if (!s) { delete peers[topic]; render(); return; }   // 空载荷 = 对方已下线
+          let t = Date.now();
+          if (packet && packet.retain) {
+            // retained 回放：信远端时间戳 → 历史残留条目按时过期，不会永续计数
+            try {
+              const o = JSON.parse(s);
+              if (o && typeof o.t === 'number') t = o.t;
+            } catch (_) { /* 解析失败则按收到处理 */ }
+          }
+          // 实时心跳用本地时间（发送方时钟不可信时也不误伤）
+          peers[topic] = t;
           render();
         } catch (_) { /* 忽略 */ }
       });
       c.on('close', () => {
-        hidePill();
-        if (!gotConnect) { clearTimeout(failTimer); switchBroker(); }
+        if (client !== c) return; // ★ 根因修复：旧连接迟到事件不得触发光换
+        if (gotConnect) { state = 'connecting'; render(); } // 自动重连中
+        else switchBroker();
       });
       c.on('offline', () => {
-        hidePill();
-        if (!gotConnect) { clearTimeout(failTimer); switchBroker(); }
+        if (client !== c) return; // ★ 同上（offline 与 close 常连发）
+        if (gotConnect) { state = 'connecting'; render(); }
+        else switchBroker();
       });
       c.on('reconnect', () => {
+        if (client !== c) return;
         attempt++;
-        if (attempt >= 6) switchBroker();   // 同一 broker 反复失败 → 换线路
+        if (attempt >= 6) switchBroker(); // 同一线路反复失败 → 轮换
       });
       c.on('error', () => { /* 静默，交给重连/切换逻辑 */ });
     }
 
+    // 启动即显示徽章（连接中 …），状态由 render 驱动，永不整体隐藏
+    render();
     connectAt();
     setInterval(publishPresence, HEARTBEAT);
     setInterval(render, 10000);
