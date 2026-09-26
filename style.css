@@ -100,6 +100,34 @@ body {
   color: var(--muted);
 }
 
+/* 实时在线人数徽章（公共 MQTT 在线感知，断线自动隐藏） */
+.online-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 9px;
+  padding: 4px 13px;
+  border-radius: 999px;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  color: #6ee7b7;
+  background: rgba(52, 211, 153, 0.12);
+  border: 1px solid rgba(52, 211, 153, 0.35);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 4px 14px rgba(52, 211, 153, 0.18);
+  animation: fadeUp 0.3s ease both;
+}
+
+.online-pill b {
+  font-weight: 800;
+  color: #34d399;
+  min-width: 1ch;
+  text-align: center;
+}
+
+.online-pill[hidden] { display: none; }
+
 .brand-avatar {
   width: 42px;
   height: 42px;

@@ -34,7 +34,7 @@ if (-not (Test-Path $platform)) { throw "android.jar missing: $platform (run sdk
 $assets = Join-Path $androidDir 'assets'
 if (Test-Path $assets) { Remove-Item $assets -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $assets | Out-Null
-foreach ($f in @('index.html', 'style.css', 'app.js', 'manifest.json', 'sw.js')) {
+foreach ($f in @('index.html', 'style.css', 'app.js', 'mqtt.min.js', 'manifest.json', 'sw.js')) {
   Copy-Item (Join-Path $webRoot $f) (Join-Path $assets $f)
 }
 Copy-Item (Join-Path $webRoot 'icons') (Join-Path $assets 'icons') -Recurse

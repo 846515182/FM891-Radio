@@ -533,7 +533,7 @@ function currentVersion() {
       if (v) return v;
     }
   } catch (_) { /* 忽略 */ }
-  return '1.9'; // 网页版：与 manifest versionName 同步维护
+  return '1.10'; // 网页版：与 manifest versionName 同步维护
 }
 
 let updateUrl = '';
@@ -646,3 +646,147 @@ function wireUpdate() {
   if (window.AndroidIcy) setTimeout(() => checkUpdate(true), 6000);
 }
 wireUpdate();
+
+/* ---------------- 实时在线人数（公共 MQTT 在线感知，零服务器） ----------------
+ * 原理：每个客户端用稳定 clientId 连上 broker，向 fm891-radio/online/<cid>
+ * 发布 retain 心跳；全体订阅 fm891-radio/online/#，收到的 retained 条目数
+ * 即当前在线人数。断线时 broker 用遗嘱（LWT，空载荷）自动删除自己的条目，
+ * 对端收到空载荷转发 → 立刻从计数中移除。
+ * 时间戳一律用本地接收时间（peer 时钟不可信）；120 秒未见心跳视为过期。
+ * 主用 EMQX（国内快），连不上自动降级 Mosquitto 公共 WSS。
+ * 纯可选功能：任何异常静默，徽章不显示，绝不影响收音机本身。
+ */
+(function onlinePresence() {
+  try {
+    if (typeof mqtt === 'undefined') return;
+
+    const NS = 'fm891-radio/online';
+    const HEARTBEAT = 30000;   // 自己的心跳间隔
+    const STALE = 120000;      // 对端条目过期阈值
+    const BROKERS = [
+      'wss://broker.emqx.io:8084/mqtt',
+      'wss://test.mosquitto.org:8081/mqtt',
+    ];
+
+    let cid = '';
+    try {
+      cid = localStorage.getItem('fm891-cid') || '';
+      if (!cid) {
+        cid = 'fm891-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+        localStorage.setItem('fm891-cid', cid);
+      }
+    } catch (_) {
+      cid = 'fm891-' + Math.random().toString(36).slice(2, 12);
+    }
+
+    const myTopic = NS + '/' + cid;
+    const peers = {};
+    const pill = $('onlinePill');
+    const countEl = $('onlineCount');
+    let client = null;
+    let brokerIdx = 0;
+    let gotConnect = false;
+    let switching = false;
+    let attempt = 0;
+
+    function render() {
+      if (!pill || !client || !gotConnect) return;
+      const now = Date.now();
+      let n = 0;
+      Object.keys(peers).forEach((k) => {
+        if (now - peers[k] <= STALE) n++;
+      });
+      if (countEl) countEl.textContent = String(n);
+      pill.hidden = false;
+    }
+
+    function hidePill() {
+      if (pill) pill.hidden = true;
+    }
+
+    function publishPresence() {
+      peers[myTopic] = Date.now();
+      if (client && gotConnect) {
+        try {
+          client.publish(myTopic, JSON.stringify({ t: peers[myTopic] }), { retain: true, qos: 0 });
+        } catch (_) { /* 忽略 */ }
+      }
+    }
+
+    function switchBroker() {
+      if (switching) return;
+      switching = true;
+      const prev = client;
+      client = null;
+      gotConnect = false;
+      attempt = 0;
+      try { if (prev) prev.end(true); } catch (_) { /* 忽略 */ }
+      if (brokerIdx + 1 < BROKERS.length) {
+        brokerIdx++;
+        connectAt();
+      }
+    }
+
+    function connectAt() {
+      let c;
+      try {
+        c = mqtt.connect(BROKERS[brokerIdx], {
+          clientId: cid,
+          keepalive: 30,
+          reconnectPeriod: 5000,
+          connectTimeout: 8000,
+          clean: true,
+          will: { topic: myTopic, payload: '', retain: true, qos: 0 },
+        });
+      } catch (_) {
+        switchBroker();
+        return;
+      }
+      client = c;
+      switching = false;
+
+      // 静默黑洞兜底：9 秒连不上就换下一个 broker
+      const failTimer = setTimeout(() => {
+        if (!gotConnect && !switching) switchBroker();
+      }, 9000);
+
+      c.on('connect', () => {
+        clearTimeout(failTimer);
+        gotConnect = true;
+        attempt = 0;
+        try { c.subscribe(NS + '/#', { qos: 0 }); } catch (_) { /* 忽略 */ }
+        publishPresence();
+        render();
+      });
+      c.on('message', (topic, payload) => {
+        if (topic === myTopic) return;
+        try {
+          const s = payload ? payload.toString() : '';
+          if (s) peers[topic] = Date.now();   // 收到心跳（含 retained 回放）→ 记本地时间
+          else delete peers[topic];           // 空载荷 = 对方已下线
+          render();
+        } catch (_) { /* 忽略 */ }
+      });
+      c.on('close', () => {
+        hidePill();
+        if (!gotConnect) { clearTimeout(failTimer); switchBroker(); }
+      });
+      c.on('offline', () => {
+        hidePill();
+        if (!gotConnect) { clearTimeout(failTimer); switchBroker(); }
+      });
+      c.on('reconnect', () => {
+        attempt++;
+        if (attempt >= 6) switchBroker();   // 同一 broker 反复失败 → 换线路
+      });
+      c.on('error', () => { /* 静默，交给重连/切换逻辑 */ });
+    }
+
+    connectAt();
+    setInterval(publishPresence, HEARTBEAT);
+    setInterval(render, 10000);
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) publishPresence();
+    });
+  } catch (_) { /* 可选功能，失败静默 */ }
+})();

@@ -1,11 +1,12 @@
 /* 拾光电台 FM89.1 — Service Worker（应用外壳离线缓存） */
-const CACHE = 'fm891-v15';
+const CACHE = 'fm891-v16';
 
 const SHELL = [
   './',
   './index.html',
   './style.css',
   './app.js',
+  './mqtt.min.js',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',

@@ -28,6 +28,7 @@
         <span class="live-dot" id="liveDot" hidden>● 直播中</span>
       </div>
       <p class="slogan">拾起耳朵里的好时光 · MUSIC RADIO</p>
+      <div class="online-pill" id="onlinePill" hidden aria-live="polite">🎧 在线 <b id="onlineCount">–</b> 人</div>
     </header>
 
     <section class="player" aria-label="播放器">
@@ -95,6 +96,7 @@
   </div>
 
   <audio id="audio" preload="none"></audio>
+  <script src="mqtt.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
