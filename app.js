@@ -12,20 +12,21 @@
  * ============================================================ */
 const STATIONS = [
   {
+    id: 'hits',
+    name: '华语流行热歌',
+    desc: '华语热门金曲 · 24 小时连播',
+    // 原源 Live365（美国跨境 CDN）断流严重，2026-09-24 换为国内
+    // 四川音乐广播线路（qtfm 稳定平台，与不断流的其他台同源，实测 165kbps）。
+    // 2026-09-26 按用户要求提为首位「重点推荐」频道（badge 跟随第一位）。
+    url: 'https://lhttp.qtfm.cn/live/1110/64k.mp3',
+  },
+  {
     id: 'huayu',
     name: 'FM891 线上音乐台',
     desc: '华语流行 · 网络电台',
     // 原源 qtfm 20500215 于 2026-09-24 凌晨短暂 404（台方维护，00:20 已恢复）；
     // 顶替源星空（5022379）口味不符，按用户要求换回原台。
     url: 'https://lhttp.qtfm.cn/live/20500215/64k.mp3',
-  },
-  {
-    id: 'hits',
-    name: '华语流行热歌',
-    desc: '华语热门金曲 · 24 小时连播',
-    // 原源 Live365（美国跨境 CDN）断流严重，2026-09-24 换为国内
-    // 四川音乐广播线路（qtfm 稳定平台，与不断流的其他台同源，实测 165kbps）。
-    url: 'https://lhttp.qtfm.cn/live/1110/64k.mp3',
   },
   {
     id: 'classic-pop',
@@ -116,6 +117,18 @@ let playlist = STATIONS.slice();
 
 let index = Number(safeGet('fm891.index'));
 if (!Number.isInteger(index) || index < 0 || index >= playlist.length) index = 0;
+// v1.12 调整了频道顺序（华语流行热歌提至首位）：老版本只存了数字下标，
+// 直接读会错位跳到隔壁台 —— 用调整前的旧顺序把下标映射回频道 id 再定位；
+// 无历史记录的新装机保持 index = 0（即新首位「华语流行热歌」默认推荐）。
+try {
+  const legacyOrder = ['huayu', 'hits', 'classic-pop', 'bj-music', 'years', 'main', 'rock', 'sleep', 'fip', 'fip-jazz', 'dance', 'eu-pop'];
+  const rawIdx = safeGet('fm891.index');
+  const n = rawIdx === null || rawIdx === '' ? -1 : Number(rawIdx);
+  if (Number.isInteger(n) && n >= 0 && n < legacyOrder.length) {
+    const target = playlist.findIndex((s) => s.id === legacyOrder[n]);
+    if (target >= 0) index = target;
+  }
+} catch (_) { /* 忽略 */ }
 
 let attachedUrl = null;   // 当前 audio 已加载的地址
 let hls = null;           // hls.js 实例
@@ -533,7 +546,7 @@ function currentVersion() {
       if (v) return v;
     }
   } catch (_) { /* 忽略 */ }
-  return '1.11'; // 网页版：与 manifest versionName 同步维护
+  return '1.12'; // 网页版：与 manifest versionName 同步维护
 }
 
 let updateUrl = '';
