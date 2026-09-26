@@ -100,7 +100,7 @@ body {
   color: var(--muted);
 }
 
-/* 实时在线人数徽章（公共 MQTT 在线感知，断线自动隐藏） */
+/* 实时在线人数徽章（公共 MQTT 在线感知；状态全程可见：… 连接中 / 数字在线 / – 线路暂不可用） */
 .online-pill {
   display: inline-flex;
   align-items: center;
@@ -127,6 +127,12 @@ body {
 }
 
 .online-pill[hidden] { display: none; }
+
+/* 线路全部失败态（–）：变暗但仍可见，功能在线、线路暂不可用 */
+.online-pill.dim {
+  opacity: 0.55;
+  filter: grayscale(0.4);
+}
 
 .brand-avatar {
   width: 42px;

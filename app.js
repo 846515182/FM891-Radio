@@ -117,18 +117,26 @@ let playlist = STATIONS.slice();
 
 let index = Number(safeGet('fm891.index'));
 if (!Number.isInteger(index) || index < 0 || index >= playlist.length) index = 0;
-// v1.12 调整了频道顺序（华语流行热歌提至首位）：老版本只存了数字下标，
-// 直接读会错位跳到隔壁台 —— 用调整前的旧顺序把下标映射回频道 id 再定位；
-// 无历史记录的新装机保持 index = 0（即新首位「华语流行热歌」默认推荐）。
-try {
-  const legacyOrder = ['huayu', 'hits', 'classic-pop', 'bj-music', 'years', 'main', 'rock', 'sleep', 'fip', 'fip-jazz', 'dance', 'eu-pop'];
-  const rawIdx = safeGet('fm891.index');
-  const n = rawIdx === null || rawIdx === '' ? -1 : Number(rawIdx);
-  if (Number.isInteger(n) && n >= 0 && n < legacyOrder.length) {
-    const target = playlist.findIndex((s) => s.id === legacyOrder[n]);
-    if (target >= 0) index = target;
-  }
-} catch (_) { /* 忽略 */ }
+// v1.12 调整了频道顺序（华语流行热歌提至首位）：老版本只存数字下标。
+// 一次性迁移（fm891.ord 标记）：把旧顺序下标换算回频道 id → 写回新顺序下标并打标，
+// 之后按新顺序直读。若不打标，每次启动都把存储值当旧顺序再换算一遍，第 0/1 位
+// 两台会永久来回翻转（选中 FM891 存 '1' → 下次又把 '1' 解成华语流行热歌）。
+// 新装机无记录：不映射，保持 index = 0（新首位「华语流行热歌」默认推荐），直接打标。
+if (safeGet('fm891.ord') !== '2') {
+  try {
+    const legacyOrder = ['huayu', 'hits', 'classic-pop', 'bj-music', 'years', 'main', 'rock', 'sleep', 'fip', 'fip-jazz', 'dance', 'eu-pop'];
+    const rawIdx = safeGet('fm891.index');
+    if (rawIdx !== null && rawIdx !== '') {
+      const n = Number(rawIdx);
+      if (Number.isInteger(n) && n >= 0 && n < legacyOrder.length) {
+        const target = playlist.findIndex((s) => s.id === legacyOrder[n]);
+        if (target >= 0) index = target;
+      }
+      safeSet('fm891.index', String(index)); // 落盘新顺序下标，后续启动直读
+    }
+    safeSet('fm891.ord', '2');
+  } catch (_) { /* 忽略 */ }
+}
 
 let attachedUrl = null;   // 当前 audio 已加载的地址
 let hls = null;           // hls.js 实例
@@ -138,8 +146,11 @@ let retries = 0;          // 失败重连次数
 let retryTimer = null;
 let toastTimer = null;
 
-const savedVolume = Number(safeGet('fm891.volume'));
-audio.volume = Number.isFinite(savedVolume) ? savedVolume : 0.85;
+// 音量：safeGet 无记录时返回 null，而 Number(null) === 0 —— 直接判 isFinite 会把
+// 新装机初始化成 0（静音）。必须显式判空走默认值；合法的 0（用户主动调静音）保留。
+const rawVolume = safeGet('fm891.volume');
+const savedVolume = rawVolume === null || rawVolume === '' ? NaN : Number(rawVolume);
+audio.volume = Number.isFinite(savedVolume) && savedVolume >= 0 && savedVolume <= 1 ? savedVolume : 0.85;
 volumeEl.value = String(audio.volume);
 
 const current = () => playlist[index];
@@ -546,7 +557,7 @@ function currentVersion() {
       if (v) return v;
     }
   } catch (_) { /* 忽略 */ }
-  return '1.12'; // 网页版：与 manifest versionName 同步维护
+  return '1.13'; // 网页版：与 manifest versionName 同步维护
 }
 
 let updateUrl = '';
