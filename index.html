@@ -28,7 +28,7 @@
         <span class="live-dot" id="liveDot" hidden>● 直播中</span>
       </div>
       <p class="slogan">拾起耳朵里的好时光 · MUSIC RADIO</p>
-      <div class="online-pill" id="onlinePill" hidden aria-live="polite">🎧 在线 <b id="onlineCount">–</b> 人</div>
+      <div class="online-pill" id="onlinePill" hidden aria-live="polite">🎧 在线 <b id="onlineCount">–</b> 人<i class="src" id="onlineSrc" hidden>官方</i></div>
     </header>
 
     <section class="player" aria-label="播放器">
@@ -65,6 +65,8 @@
         <input id="volume" type="range" min="0" max="1" step="0.01" value="0.85" aria-label="调节音量" />
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
       </section>
+
+      <nav class="cats" id="catList" aria-label="频道分类"></nav>
 
       <nav class="stations" id="stationList" aria-label="频道列表"></nav>
     </section>

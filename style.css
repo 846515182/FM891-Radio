@@ -100,7 +100,8 @@ body {
   color: var(--muted);
 }
 
-/* 实时在线人数徽章（公共 MQTT 在线感知；状态全程可见：… 连接中 / 数字在线 / – 线路暂不可用） */
+/* 实时在线人数徽章（官方数据优先：蜻蜓FM 官方 audience_count；取不到时降级
+ * 公共 MQTT 在线感知。状态全程可见：… 加载中 / 数字在线 / – 线路暂不可用） */
 .online-pill {
   display: inline-flex;
   align-items: center;
@@ -125,6 +126,22 @@ body {
   min-width: 1ch;
   text-align: center;
 }
+
+/* 「官方」角标：数字来自蜻蜓FM 官方接口时点亮，降级到本机感知时隐藏 */
+.online-pill .src {
+  margin-left: 1px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #a7f3d0;
+  background: rgba(52, 211, 153, 0.22);
+  border: 1px solid rgba(52, 211, 153, 0.42);
+}
+
+.online-pill .src[hidden] { display: none; }
 
 .online-pill[hidden] { display: none; }
 
@@ -411,12 +428,62 @@ body.playing .eq i:nth-child(5) { animation-delay: 0.6s; }
   box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.65);
 }
 
+/* ---------- 分类切换条（887 路台单先按节目类型分栏，否则一条胶囊滑不到头） ---------- */
+.cats {
+  display: flex;
+  flex-direction: row;
+  gap: 6px;
+  margin-top: 16px;
+  padding: 2px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+
+.cats::-webkit-scrollbar { display: none; }
+
+.cat {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform 0.12s ease, background 0.2s ease, border-color 0.2s ease;
+}
+
+.cat:active { transform: scale(0.96); }
+
+.cat small {
+  font-size: 10px;
+  font-weight: 600;
+  opacity: 0.55;
+  letter-spacing: 0.2px;
+}
+
+.cat.active {
+  background: var(--grad-soft);
+  border-color: rgba(255, 255, 255, 0.35);
+  box-shadow: 0 6px 14px rgba(139, 92, 246, 0.35);
+}
+
+.cat.active small { opacity: 0.9; }
+
 /* ---------- 频道胶囊条（播放器内横向滑动） ---------- */
 .stations {
   display: flex;
   flex-direction: row;
   gap: 8px;
-  margin-top: 20px;
+  margin-top: 12px;
   padding: 2px 2px 4px;
   overflow-x: auto;
   overscroll-behavior-x: contain;
