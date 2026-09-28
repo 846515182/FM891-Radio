@@ -712,3 +712,206 @@ footer {
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+
+/* ==================== 在线点歌（阶段 1） ==================== */
+
+/* 主播气泡：分类条上方一条，点击打开点歌台 */
+.dj-bubble {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  margin-top: 14px;
+  padding: 9px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.16), rgba(236, 72, 152, 0.12));
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.12s ease, border-color 0.2s ease;
+}
+
+.dj-bubble:active { transform: scale(0.98); }
+
+.dj-face {
+  flex: none;
+  font-size: 15px;
+  filter: drop-shadow(0 2px 6px rgba(236, 72, 152, 0.5));
+}
+
+.dj-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.92;
+}
+
+/* 打字机光标：正在播报时逐字上屏 */
+.dj-text.typing::after {
+  content: '\258D';
+  color: var(--accent2);
+  animation: djBlink 0.8s steps(1) infinite;
+}
+
+@keyframes djBlink { 50% { opacity: 0; } }
+
+.dj-cta {
+  flex: none;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--grad);
+  box-shadow: 0 6px 14px rgba(236, 72, 152, 0.4);
+}
+
+/* 点歌面板 */
+.req-dialog {
+  width: min(360px, 92vw);
+  display: flex;
+  flex-direction: column;
+}
+
+.req-form { display: flex; gap: 8px; margin: 0 0 8px; }
+
+.req-form input {
+  flex: 1;
+  min-width: 0;
+  padding: 11px 13px;
+  border-radius: 12px;
+  border: 1px solid var(--stroke);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+}
+
+.req-form input::placeholder { color: rgba(184, 173, 224, 0.6); }
+
+.req-form button {
+  flex: none;
+  padding: 0 16px;
+  border: none;
+  border-radius: 12px;
+  background: var(--grad);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: 0 8px 20px rgba(236, 72, 152, 0.4);
+  cursor: pointer;
+}
+
+.req-form button:active { transform: scale(0.96); }
+
+.req-hint { margin: 0 0 8px; font-size: 11.5px; color: var(--muted); }
+
+.req-list {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+  max-height: 40vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.req-list:empty { display: none; }
+
+.req-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 11px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* 只有「已找到台」的条目可点（点它 = 一起听） */
+.req-item.can-play {
+  border-color: rgba(236, 72, 152, 0.45);
+  background: rgba(236, 72, 152, 0.1);
+  cursor: pointer;
+}
+
+.req-item.can-play:active { transform: scale(0.98); }
+
+.req-no { flex: none; font-size: 11px; font-weight: 800; color: var(--muted); opacity: 0.7; }
+
+.req-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+
+.req-title {
+  font-style: normal;
+  font-size: 13.5px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.req-meta {
+  font-size: 11px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.req-st {
+  flex: none;
+  font-style: normal;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.st-wait   { background: rgba(255, 255, 255, 0.08); color: var(--muted); }
+.st-search { background: rgba(56, 189, 248, 0.16); color: #7dd3fc; }
+.st-ready  { background: rgba(139, 92, 246, 0.2);  color: #c4b5fd; }
+.st-play   { background: rgba(236, 72, 152, 0.22); color: #f9a8d4; }
+.st-miss   { background: rgba(255, 255, 255, 0.07); color: #9a90c4; }
+
+/* 昵称：多人同步里「谁点的」要能自己认领，别只有一串随机尾号 */
+.req-nick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.12);
+}
+
+.req-nick label {
+  flex: none;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.req-nick input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 11px;
+  border-radius: 10px;
+  border: 1px solid var(--stroke);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.req-nick input::placeholder { color: rgba(184, 173, 224, 0.5); }
+
+@media (max-width: 360px) {
+  .req-st { font-size: 10px; padding: 3px 7px; }
+}

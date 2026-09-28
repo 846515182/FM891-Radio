@@ -66,6 +66,12 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
       </section>
 
+      <button class="dj-bubble" id="djBubble" type="button" aria-label="打开在线点歌">
+        <span class="dj-face" aria-hidden="true">🎙️</span>
+        <span class="dj-text" id="djText">主播在线 · 想听什么就点</span>
+        <span class="dj-cta">点歌</span>
+      </button>
+
       <nav class="cats" id="catList" aria-label="频道分类"></nav>
 
       <nav class="stations" id="stationList" aria-label="频道列表"></nav>
@@ -97,8 +103,28 @@
     </div>
   </div>
 
+  <div class="dialog-mask" id="reqMask" hidden>
+    <div class="dialog req-dialog" role="dialog" aria-modal="true" aria-labelledby="reqTitle">
+      <h3 id="reqTitle">🎧 在线点歌</h3>
+      <form class="req-form" id="reqForm" autocomplete="off">
+        <input id="reqInput" type="text" placeholder="输入歌名，主播全网找" maxlength="30" />
+        <button class="primary" id="reqGo" type="submit">点歌</button>
+      </form>
+      <p class="req-hint" id="reqHint"></p>
+      <ul class="req-list" id="reqList"></ul>
+      <div class="req-nick">
+        <label for="nickInput">我的昵称</label>
+        <input id="nickInput" type="text" maxlength="16" placeholder="别人点歌时看到的名字" />
+      </div>
+      <div class="dialog-actions">
+        <button class="ghost" id="reqClose" type="button">收起</button>
+      </div>
+    </div>
+  </div>
+
   <audio id="audio" preload="none"></audio>
   <script src="mqtt.min.js"></script>
   <script src="app.js"></script>
+  <script src="request.js"></script>
 </body>
 </html>

@@ -2067,3 +2067,22 @@ wireUpdate();
     });
   } catch (_) { /* 可选功能，失败静默 */ }
 })();
+
+/* ---------------- 对外接口：在线点歌模块（request.js） ----------------
+ * 只暴露「读状态 + 走既有通道」，刻意**不**把 audio / playToken / 重连体系
+ * 交出去。点歌命中后必须走 selectStation() 这一个入口：它会顺带做台单重绘、
+ * nowPlaying 更新、原生桥同步、官方在线人数刷新、以及 play() 的代际校验。
+ * 让点歌模块自己去碰 audio，就等于绕开 v1.15 刚修完的那套换源防护。
+ * （所有成员都是箭头函数，读的是届时的最新值，不存在启动顺序问题。） */
+window.__radio = {
+  /* 迁移后的完整台单 —— 不是原始 STATIONS，legacy 台和被下架台的替换都在里面 */
+  stations: () => playlist,
+  index: () => index,
+  select: (i) => selectStation(i, true),
+  toast: (msg) => toast(msg),
+  setStatus: (kind, text) => setStatus(kind, text),
+  /* 蜻蜓官方接口：点歌模块拉 nowplaying 复用同一个地址，不要另开一份常量 */
+  api: AUDIENCE_API,
+  /* 从直播 url 解析蜻蜓频道 id，解析不出返回空串 */
+  qtId: (url) => qtChannelId(url),
+};
