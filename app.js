@@ -981,7 +981,8 @@ let hls = null;           // hls.js 实例
 let hlsRetried = false;
 let shouldPlay = false;   // 用户的播放意图
 let retries = 0;          // 失败重连次数
-let retryTimer = null;
+let retryTimer = null;    // 重连排队中的定时器句柄；非 null 即「已有一趟重连在排队」
+let abortReissue = 0;     // 良性中断后的补发次数（有上限，防止自激循环）
 let toastTimer = null;
 
 /* 播放代际令牌：play / pause / 切台 各自 +1。
@@ -1238,6 +1239,15 @@ async function attach(url, force) {
     }
   }
 
+  /* 强制重挂（失败重试）且地址没变时：对 src 赋**同值**在浏览器里是 no-op，
+   * 不会重跑加载算法，粘滞的 error 标记也就清不掉 —— 接着调 play() 必然
+   * 再次被 NotSupportedError 拒绝，看起来就是「怎么点都是失败」。
+   * 必须先摘掉再挂，让它真的重新拉一次流。 */
+  if (force && audio.getAttribute('src') === url) {
+    audio.removeAttribute('src');
+    try { audio.load(); } catch (_) { /* 忽略 */ }
+  }
+
   /* 关键优化：直接换 src。旧版先 removeAttribute('src') + load() 再 set src，
    * 一次切台要走两遍媒体卸载流程：① 多一次 teardown，期间连发 pause/error
    * 事件污染状态；② 若此刻有 play() 挂起必被 “interrupted by a new load
@@ -1252,6 +1262,7 @@ async function play() {
   shouldPlay = true;
   retries = 0;
   clearTimeout(retryTimer);
+  retryTimer = null;           // 本次重新起播，之前排队的重连作废
   disarmStallWatchdog();
   beginSwitch(700);            // 换源窗口：本次 attach 产生的拆源事件先不处理
   try {
@@ -1260,21 +1271,37 @@ async function play() {
     if (token !== playToken) return;
     await audio.play();
     if (token !== playToken) return;
+    abortReissue = 0;          // 已成功出声，良性中断补发计数归零
     if (window.AndroidIcy) {
       try { window.AndroidIcy.start(current().url); } catch (_) { /* 忽略 */ }
     }
   } catch (err) {
-    // ① 已被新的播放/暂停/切台请求顶掉 —— 静默退出，绝不改状态（旧版在这儿
+    // ⓪ 已被新的播放/暂停/切台请求顶掉 —— 静默退出，绝不改状态（旧版在这儿
     //    把 shouldPlay 置 false，导致切台时新台被自己掐断 = 断流）
     if (token !== playToken) return;
+
+    // ① NotSupportedError = 源真的没拉起来。WebView/Chrome 会**同时**发 error
+    //    事件并把 play() 拒绝掉，两条路都汇到这里。
+    //    旧版把这当成「真失败」：shouldPlay=false + 弹「播放失败」，而
+    //    handleStreamError() 第一行 `if (!shouldPlay) return` 立刻退出 ——
+    //    5 次重连一次都跑不到。表现就是「切台总是失败，且再也救不回来」。
+    if (err && err.name === 'NotSupportedError') { handleStreamError(); return; }
+
     // ② interrupted / AbortError = 换源、暂停造成的正常中断，同样不是失败
     if (isBenignPlayAbort(err)) {
-      updatePlayUI();
-      if (!shouldPlay) setStatus('', '已暂停');
+      if (!shouldPlay) { updatePlayUI(); setStatus('', '已暂停'); return; }
+      // token 没变 = 没人顶掉本次播放，中断来自换源自身。旧版在这儿静默 return，
+      // 之后再没有任何代码会去调 play()，状态就永远卡在「连接中…」。
+      if (abortReissue >= 3) { handleStreamError(); return; }   // 有上限，防自激
+      abortReissue += 1;
+      setStatus('loading', '继续连接…');
+      setTimeout(() => { if (token !== playToken || !shouldPlay) return; play(); }, 300);
       return;
     }
-    // ③ 真失败（地址失效 / 不支持的格式 / 自动播放被拒）
+
+    // ③ 真失败（地址根本不存在 / 自动播放被系统拒绝）
     shouldPlay = false;
+    abortReissue = 0;
     updatePlayUI();
     setStatus('', '点击播放开始收听');
     toast('播放失败：当前频道源暂时不可用，换个频道试试或稍后重试');
@@ -1289,6 +1316,8 @@ function pause() {
   shouldPlay = false;
   switchUntil = 0;             // 用户主动暂停：结束换源窗口，pause 事件立即生效
   clearTimeout(retryTimer);
+  retryTimer = null;           // 用户按了暂停，排队中的重连不再有意义
+  abortReissue = 0;
   disarmStallWatchdog();
   audio.pause();
   updatePlayUI();              // 不等事件，UI 立刻回位（窗口内事件会被忽略）
@@ -1316,6 +1345,8 @@ async function selectStation(i, autoplay) {
   if (changed) {
     retries = 0;
     clearTimeout(retryTimer);
+    retryTimer = null;
+    abortReissue = 0;
     onStationChanged();    // 官方在线人数跟着换台重取（内部有代际校验防串台）
     disarmStallWatchdog();   // 旧台遗留的 20 秒看门狗会去重连新台，必须先撤
     beginSwitch(800);        // 800ms 换源窗口：期间的 pause / error 是拆旧源的残留
@@ -1352,14 +1383,22 @@ function step(delta) {
 }
 
 /* ---------------- 错误与自动重连 ---------------- */
+/* 退避表：旧版 2500*retries = 2.5/5/7.5/10/12.5 秒，累计 37.5 秒 —— 切到一个
+ * 坏台要干等近 40 秒才有结论，用户体感就是「切台失败 + 卡住不动」。
+ * 收到 0.5~4.4 秒，累计约 10 秒：既有退避，又不把人吊着。 */
+const RETRY_DELAYS = [500, 900, 1600, 2700, 4400];
+
 function handleStreamError() {
   if (!shouldPlay) return;
+  if (retryTimer) return;   // 已有一趟重连在排队：error 事件与 play() 拒绝会**同时**
+                            // 打进来，不挡住就会把 5 次配额在一瞬之间耗光
   const token = playToken;   // 记住发起时的代际，重连前若用户已切台/暂停就放弃
 
   if (retries < 5) {
     retries += 1;
     setStatus('loading', '重连中 ' + retries + '/5 …');
     retryTimer = setTimeout(async () => {
+      retryTimer = null;
       if (!shouldPlay || token !== playToken) return;
       const url = current().url;
       const bust = url + (url.includes('?') ? '&' : '?') + 'r=' + Date.now();
@@ -1369,14 +1408,16 @@ function handleStreamError() {
       try {
         await audio.play();
       } catch (err) {
-        if (token !== playToken || isBenignPlayAbort(err)) return;
+        if (token !== playToken) return;
+        // 良性中断同样回到重连通道（内部有 shouldPlay + 排队去重兜底，
+        // 且 retries 有上限，不会自激）
         handleStreamError();
         return;
       }
       if (token === playToken && window.AndroidIcy) {
         try { window.AndroidIcy.start(current().url); } catch (_) { /* 忽略 */ }
       }
-    }, 2500 * retries);
+    }, RETRY_DELAYS[retries - 1]);
     return;
   }
 
@@ -1699,7 +1740,7 @@ function currentVersion() {
       if (v) return v;
     }
   } catch (_) { /* 忽略 */ }
-  return '1.14'; // 网页版：与 manifest versionName 同步维护
+  return '1.15'; // 网页版：与 manifest versionName 同步维护
 }
 
 let updateUrl = '';
