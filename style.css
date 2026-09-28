@@ -881,6 +881,63 @@ footer {
 .st-play   { background: rgba(236, 72, 152, 0.22); color: #f9a8d4; }
 .st-miss   { background: rgba(255, 255, 255, 0.07); color: #9a90c4; }
 
+/* ---------- 点歌单曲（VOD）进度条：直播台永远 hidden，不占位 ---------- */
+.vod-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 14px;
+}
+
+.vod-row[hidden] { display: none; }
+
+.vod-time {
+  flex: none;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 38px;
+}
+
+.vod-time:last-child { text-align: right; }
+
+.vod-track {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 22px;             /* 竖向留出可点面积，条本身只有 4px */
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+/* 轨道（灰底）：::before 先画，下面的 i 按树序叠在它上面，不用负 z-index
+ * —— 负值会把填充条压到父级背景后面，某些 WebView 上整条会看不见 */
+.vod-track::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 4px;
+  margin-top: -2px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* 已播进度（渐变填充） */
+.vod-track i {
+  position: relative;
+  display: block;
+  width: 0;
+  height: 4px;
+  border-radius: 99px;
+  background: var(--grad);
+  box-shadow: 0 0 10px rgba(236, 72, 152, 0.55);
+  transition: width 0.25s linear;
+}
+
 /* 昵称：多人同步里「谁点的」要能自己认领，别只有一串随机尾号 */
 .req-nick {
   display: flex;

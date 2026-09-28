@@ -977,6 +977,13 @@ if (safeGet('fm891.ord') !== '3') {
 }
 
 let attachedUrl = null;   // 当前 audio 已加载的地址
+
+/* 点歌单曲（VOD）状态。null = 直播模式，**所有与直播的分叉都会走直播分支**，
+ * 行为与加这个字段之前逐条一致 —— v1.15 刚把切换/重连修好，不能顺手改坏。
+ * 真正需要分叉的只有四处：播什么地址、出声后说什么、走不走 ICY 读曲目、
+ * 进度条露不露。其余（代际令牌、良性中断识别、换源窗口、重连去重）全部复用。 */
+let vod = null;           // { url, title, from, dur } | null
+
 let hls = null;           // hls.js 实例
 let hlsRetried = false;
 let shouldPlay = false;   // 用户的播放意图
@@ -1146,7 +1153,7 @@ function updatePlayUI() {
     try { navigator.mediaSession.playbackState = playing ? 'playing' : 'paused'; } catch (_) { /* 忽略 */ }
   }
   if (playing && statusEl.dataset.kind !== 'loading') {
-    setStatus('live', '直播中');
+    setStatus('live', isVod() ? '播放中' : '直播中');
   }
 }
 
@@ -1267,12 +1274,13 @@ async function play() {
   beginSwitch(700);            // 换源窗口：本次 attach 产生的拆源事件先不处理
   try {
     // 上一次源报过错时，元素仍带着 error 标记，必须强制换一次 src 才能恢复
-    await attach(current().url, !!audio.error);
+    await attach(isVod() ? vod.url : current().url, !!audio.error);
     if (token !== playToken) return;
     await audio.play();
     if (token !== playToken) return;
     abortReissue = 0;          // 已成功出声，良性中断补发计数归零
-    if (window.AndroidIcy) {
+    // 单曲没有流内元数据，再去开一路 ICY 读取只是白耗连接和带宽
+    if (window.AndroidIcy && !isVod()) {
       try { window.AndroidIcy.start(current().url); } catch (_) { /* 忽略 */ }
     }
   } catch (err) {
@@ -1335,6 +1343,9 @@ function togglePlay() {
 }
 
 async function selectStation(i, autoplay) {
+  // 选台 = 回到直播模式。单曲那一路只清状态和进度条，不停播 ——
+  // 下面 attach() 会直接把 src 换成电台地址，中途不给断流的机会。
+  exitVod();
   const changed = i !== index;
   ++playToken;      // 先作废上一次未完成的 play()，防止它回来改状态/弹错误提示
   index = i;
@@ -1382,6 +1393,93 @@ function step(delta) {
   selectStation(next, true);
 }
 
+/* ---------------- 点歌单曲（VOD） ---------------- */
+/* 直播的源永远在那儿，单曲是一次性的有限文件。两者差异其实只有四处，其余
+ * 一律复用直播那套已经验证过的防护 —— 代际令牌、良性中断识别、换源窗口、
+ * 重连去重。绝不另起一套播放逻辑：v1.15 刚把这些坑填平，重写等于重新挖开。 */
+function isVod() { return vod !== null; }
+
+/* 进入单曲模式：只改地址和展示，不动 shouldPlay、不改 playToken ——
+ * 紧接着那次 play() 会照常走完它已有的全部防抖/恢复路径。 */
+function enterVod(info) {
+  vod = {
+    url: String(info.url || ''),
+    title: String(info.title || '点播曲目').trim().slice(0, 60),
+    from: String(info.from || '').trim().slice(0, 30),
+    dur: Number(info.dur) > 0 ? Number(info.dur) : 0,
+  };
+  disarmStallWatchdog();
+  const row = $('vodRow');
+  if (row) row.hidden = false;
+  nowTitle = vod.title;
+  const nt = $('nowTitle');
+  if (nt) nt.textContent = '♪ ' + vod.title;
+  if (window.AndroidIcy) {
+    try { window.AndroidIcy.stop(); } catch (_) { /* 忽略 */ }
+  }
+  updateMediaSession();
+  renderVodProgress();
+}
+
+/* 退出单曲模式：只清状态和进度条，**不停播** —— 调用方（选台）马上会
+ * attach() 到电台地址，中间不断开，用户听不到断层。 */
+function exitVod() {
+  if (!vod) return;
+  vod = null;
+  const row = $('vodRow');
+  if (row) row.hidden = true;
+}
+
+/* 对外入口：点歌模块 / 阶段2 worker 播一首"已经就绪"的单曲 */
+async function playVod(info) {
+  if (!info || !info.url) {
+    toast('这首还没有可播的音源，先让 DJ 找找');
+    return;
+  }
+  enterVod(info);
+  await play();
+}
+
+function fmtTime(sec) {
+  if (!isFinite(sec) || sec < 0) return '0:00';
+  const s = Math.floor(sec % 60);
+  const m = Math.floor(sec / 60) % 60;
+  const h = Math.floor(sec / 3600);
+  const mm = h ? String(h) + ':' + String(m).padStart(2, '0') : String(m);
+  return mm + ':' + String(s).padStart(2, '0');
+}
+
+function renderVodProgress() {
+  const pct = $('vodPct');
+  const cur = $('vodCur');
+  const durEl = $('vodDur');
+  if (!pct || !cur || !durEl) return;
+  // 真实时长优先（刚加载完 metadata 就有），拿不到就退回上报的估计值
+  const total = audio.duration;
+  const d = isFinite(total) && total > 0 ? total : (vod ? vod.dur : 0);
+  const t = isFinite(audio.currentTime) ? audio.currentTime : 0;
+  pct.style.width = (d > 0 ? Math.min(100, (t / d) * 100) : 0) + '%';
+  cur.textContent = fmtTime(t);
+  durEl.textContent = d > 0 ? fmtTime(d) : '--:--';
+}
+
+/* 点进度条跳转：jsdom 里 getBoundingClientRect 恒为 0，直接返回，
+ * 不会让测试里的 seek 去除以 0 */
+function wireVodSeek() {
+  const track = $('vodTrack');
+  if (!track) return;
+  track.addEventListener('click', (e) => {
+    if (!isVod()) return;
+    const total = audio.duration;
+    if (!isFinite(total) || total <= 0) return;
+    const r = track.getBoundingClientRect();
+    if (!r.width) return;
+    const ratio = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+    audio.currentTime = ratio * total;
+    renderVodProgress();
+  });
+}
+
 /* ---------------- 错误与自动重连 ---------------- */
 /* 退避表：旧版 2500*retries = 2.5/5/7.5/10/12.5 秒，累计 37.5 秒 —— 切到一个
  * 坏台要干等近 40 秒才有结论，用户体感就是「切台失败 + 卡住不动」。
@@ -1400,7 +1498,7 @@ function handleStreamError() {
     retryTimer = setTimeout(async () => {
       retryTimer = null;
       if (!shouldPlay || token !== playToken) return;
-      const url = current().url;
+      const url = isVod() ? vod.url : current().url;
       const bust = url + (url.includes('?') ? '&' : '?') + 'r=' + Date.now();
       beginSwitch(700);
       await attach(bust, true);
@@ -1414,7 +1512,7 @@ function handleStreamError() {
         handleStreamError();
         return;
       }
-      if (token === playToken && window.AndroidIcy) {
+      if (token === playToken && window.AndroidIcy && !isVod()) {
         try { window.AndroidIcy.start(current().url); } catch (_) { /* 忽略 */ }
       }
     }, RETRY_DELAYS[retries - 1]);
@@ -1425,7 +1523,7 @@ function handleStreamError() {
   retries = 0;
   updatePlayUI();
   setStatus('error', '连接失败 · 点按重试');
-  toast('直播连接失败：可能是网络问题或地址已失效');
+  toast(isVod() ? '点播连接失败：可能是网络问题或音源已失效' : '直播连接失败：可能是网络问题或地址已失效');
 }
 
 /* ---------------- 锁屏 / 蓝牙控制 ---------------- */
@@ -1436,14 +1534,21 @@ function updateMediaSession() {
   if (!('mediaSession' in navigator) || typeof MediaMetadata === 'undefined') return;
   const s = current();
   try {
-    navigator.mediaSession.metadata = new MediaMetadata({
+    const artwork = [
+      { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+    ];
+    // 单曲：锁屏上要显示「点的这首歌」，不是当时选中的电台台名
+    navigator.mediaSession.metadata = new MediaMetadata(vod ? {
+      title: vod.title,
+      artist: vod.from ? (vod.from + ' 点播') : '在线点歌',
+      album: '拾光电台 FM89.1 · 听友点歌',
+      artwork: artwork,
+    } : {
       title: nowTitle || s.name,
       artist: nowTitle ? s.name : s.desc,
       album: nowTitle ? '拾光电台 FM89.1 · ' + s.name : '拾光电台 FM89.1',
-      artwork: [
-        { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png' },
-        { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' },
-      ],
+      artwork: artwork,
     });
     navigator.mediaSession.setActionHandler('play', () => play());
     navigator.mediaSession.setActionHandler('pause', () => pause());
@@ -1455,6 +1560,8 @@ function updateMediaSession() {
 }
 
 window.__onIcyTitle = function (title) {
+  if (isVod()) return;   // 换进单曲后，原生 ICY 读取可能还有一条迟到的旧曲目回来，
+                         // 不挡掉会把刚显示的点歌标题冲掉
   const t = String(title || '').trim();
   if (!t || t === nowTitle) return;
   nowTitle = t;
@@ -1474,6 +1581,7 @@ window.__svcPause = function () { pause(); };
 playBtn.addEventListener('click', togglePlay);
 $('prevBtn').addEventListener('click', () => step(-1));
 $('nextBtn').addEventListener('click', () => step(1));
+wireVodSeek();
 
 volumeEl.addEventListener('input', () => {
   audio.volume = Number(volumeEl.value);
@@ -1510,7 +1618,8 @@ audio.addEventListener('playing', () => {
   retries = 0;
   switchUntil = 0;        // 新源已出声 → 换源窗口结束，后续事件正常处理
   disarmStallWatchdog();
-  setStatus('live', '直播中');
+  setStatus('live', isVod() ? '播放中' : '直播中');
+  if (isVod()) renderVodProgress();
   updatePlayUI();
   icyYield(false);
 });
@@ -1555,6 +1664,28 @@ audio.addEventListener('stalled', () => {
     armStallWatchdog();
     icyYield(true);
   }
+});
+
+/* ---------------- 单曲（VOD）专属事件 ----------------
+ * 直播台不关心这三个：直播没有进度、不会播完。挂在监听区末尾，
+ * 不改任何既有监听器，直播路径逐行不动。 */
+audio.addEventListener('timeupdate', () => { if (isVod()) renderVodProgress(); });
+
+audio.addEventListener('loadedmetadata', () => { if (isVod()) renderVodProgress(); });
+
+audio.addEventListener('ended', () => {
+  if (!isVod()) return;
+  // 不清 vod：还留在单曲模式，按播放键可以从头再放一遍。
+  // 必须把 shouldPlay 置 false —— 否则按钮仍是"暂停"态，再点一下
+  // togglePlay 会走成 pause()，用户点了播放反而停下来。
+  shouldPlay = false;
+  retries = 0;
+  clearTimeout(retryTimer);
+  retryTimer = null;
+  disarmStallWatchdog();
+  updatePlayUI();
+  setStatus('', '播完了 · 点播放再听一遍');
+  renderVodProgress();
 });
 
 /* ---------------- 官方在线人数（蜻蜓FM 官方接口 rapi.qingting.fm） ----------------
@@ -2085,4 +2216,9 @@ window.__radio = {
   api: AUDIENCE_API,
   /* 从直播 url 解析蜻蜓频道 id，解析不出返回空串 */
   qtId: (url) => qtChannelId(url),
+  /* 播一首「已经就绪」的单曲：进 VOD 模式后走的是同一套 play()，
+   * 代际/重连/换源防护一条不绕。返回 Promise，失败不抛给调用方。 */
+  playVod: (info) => playVod(info),
+  exitVod: () => exitVod(),
+  isVod: () => isVod(),
 };

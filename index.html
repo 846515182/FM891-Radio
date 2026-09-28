@@ -60,6 +60,13 @@
         </button>
       </section>
 
+      <!-- 点歌单曲的进度条：只有单曲模式才露出，直播台永远不显示（直播没有进度概念） -->
+      <div class="vod-row" id="vodRow" hidden>
+        <span class="vod-time" id="vodCur">0:00</span>
+        <span class="vod-track" id="vodTrack" role="slider" aria-label="播放进度" tabindex="0"><i id="vodPct"></i></span>
+        <span class="vod-time" id="vodDur">--:--</span>
+      </div>
+
       <section class="volume" aria-label="音量">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM5 9v6h4l5 5V4L9 9H5z"/></svg>
         <input id="volume" type="range" min="0" max="1" step="0.01" value="0.85" aria-label="调节音量" />
