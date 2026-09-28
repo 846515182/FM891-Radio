@@ -1,4 +1,4 @@
-/* 拾光电台 FM89.1 — 在线点歌（阶段 1）
+/* 拾光电台 FM89.1 — 在线点歌
  * ============================================================================
  * 【这一版做什么】
  *  1. 多人同步点歌队列：每个客户端把自己看到的**全量**队列 retain 到
@@ -9,18 +9,25 @@
  *     （蜻蜓官方接口，app.js 的在线人数用的同一个），谁**正在放**这首歌就
  *     走 selectStation() 正式切台。真出声、零后端、零版权风险。
  *  3. 主播气泡：事件驱动的打字机播报。
+ *  4. **歌已备好**（阶段 2 的落点，本版已就位但**没有发布者**）：worker 往
+ *     fm891-radio/r/<id> 发一条 retain 的音源，这里挂到对应条目上，标签
+ *     变「可播放 · 一点就听」，点它走 __radio.playVod() 播单曲。接上 worker
+ *     之后阶段 1 的队列/气泡/列表/昵称**原样复用**，只有音源多了一路。
  *
- * 【为什么阶段 1 不接电报】
+ * 【为什么现在还没有电报那一路】
  *  @music_v1bot 的协议已逆向清楚（/search → 编号列表 + inline 键盘 →
  *  getCallbackQueryAnswer → messageAudio），但它回的是**电报音频文件**而不
- *  是 HTTP 直链，下载必须走 MTProto，因此绕不开一台常驻后端。阶段 1 刻意
- *  零后端；阶段 2 接入后，电报只是给这里**多加一个音源**，队列/气泡/切台
- *  全部复用，不用重做。
+ *  是 HTTP 直链，下载必须走 MTProto，因此绕不开一台常驻后端。缺后端时，
+ *  第 4 条路径就是空的 —— 存在它不会改变现在的任何行为（ready-test 有断言）。
  *
  * 【隔离原则】
- *  本模块只通过 window.__radio 走 selectStation() 这一个入口碰播放，
+ *  本模块只通过 window.__radio 碰播放，**两个入口，各有各的场合**：
+ *   - selectStation()：扫到电台在放这首歌（阶段 1，走直播）
+ *   - playVod()      ：有现成的音源文件（阶段 2，走单曲）
  *  绝不直接操作 audio、不碰 playToken / switchUntil / 重连体系（v1.15 刚
- *  修完的换源防护）。整体 try/catch 静默降级，本模块挂了不影响电台本身。
+ *  修完的换源防护）。整体 try/catch 降级，本模块挂了不影响电台本身 ——
+ *  但降级要 console.error 喊一声，静默兜底会把 ReferenceError 这类真 bug
+ *  变成「点歌台悄悄没了」，日志里一个字都查不到。
  */
 (function requestStation() {
   try {
@@ -40,6 +47,11 @@
     const GC_TOMB = 20 * 60000;  // 墓碑保留 20 分钟（够慢速的对端收到）
     const MAX_ITEMS = 40;        // 队列上限，超出淘汰最老的
     const MIN_GAP = 3000;        // 本地点歌冷却，防手抖连点
+    /* 「歌已备好」的音源广播：阶段 2 的 worker 找到并下好歌后往这里发 retain。
+     * 阶段 1 没有 worker，这条路径是**空的** —— 存在它不会改变现在的任何行为。 */
+    const READY_NS = 'fm891-radio/r';
+    const MAX_READY = 40;        // 备好的音源条数上限，和队列同量级
+    const READY_FRESH = 10 * 60000;  // 超过 10 分钟的不再播报（重连回放会成堆）
     /* 扫描节流参数单独成表，并从 __req 暴露出去：测试要把 deadline 压到几十
      * 毫秒才能验证「硬截止真的会停」。光读源码断言等于赌它没被改坏。 */
     const TUNING = {
@@ -86,6 +98,11 @@
      * 合并规则：同 id 取 ver 大者。每次本地变更 ver+1 并重发快照，
      * 因此「谁的更新谁赢」，不需要中心仲裁。 */
     const items = new Map();
+    /* 「歌已备好」的音源表，与队列分开存：队列是「大家点什么」，这张表是
+     * 「哪首真的能播了」。两者来源不同、更新节奏不同，混进 items 会被
+     * 快照合并互相盖掉 —— 音源丢了就等于歌白点。 */
+    const ready = new Map();
+    let lastReadySay = 0;
     let mySeq = 0;
     let lastSnap = '';          // 上次发布内容的指纹，用于打破合并回环
     let lastAddAt = 0;
@@ -325,6 +342,78 @@
       say('全网电台这会儿都没在放《' + item.title + '》，先记进点歌池了');
     }
 
+    /* ---------------- 歌已备好（阶段 2 的落点） ---------------- */
+    /* worker 找到歌并下好音源后发一条 retain，这里挂到对应的点歌条目上。
+     * 挂上之后列表项就从「暂无电台在放」变成「可播放 · 一点就听」，
+     * 点它走 __radio.playVod() —— 队列、气泡、列表、昵称全部原样复用。 */
+    function onReady(msg) {
+      if (!msg || typeof msg !== 'object') return false;
+      const id = typeof msg.id === 'string' ? msg.id : '';
+      const title = typeof msg.title === 'string' ? msg.title.slice(0, 30) : '';
+      const url = typeof msg.url === 'string' ? msg.url : '';
+      // schema 不合格的一律丢弃：音源地址是能直接拉起播放的东西，
+      // 宁可不认，也不能让脏数据把播放器带去随便一个地方
+      if (!id || !title || !/^https?:\/\//i.test(url)) return false;
+      const dur = Number(msg.dur) || 0;
+      if (dur && (dur < 1 || dur > 6 * 3600)) return false;
+      const ver = Number(msg.ver) || 0;
+      const ts = Number(msg.ts) || Date.now();
+      const cur = ready.get(id);
+      if (cur && cur.ver >= ver) return false;   // 同 id 取 ver 大者，断回环
+      const entry = {
+        id: id, url: url, dur: dur, ts: ts, ver: ver,
+        title: title,
+        from: typeof msg.from === 'string' ? msg.from.slice(0, 16) : '',
+      };
+      ready.set(id, entry);
+      pruneReady();
+      const it = findItem(id, title);
+      if (it) announceReady(it, entry);
+      return true;
+    }
+
+    function pruneReady() {
+      if (ready.size <= MAX_READY) return;
+      const arr = [];
+      ready.forEach((v, k) => arr.push([k, v]));
+      arr.sort((a, b) => a[1].ts - b[1].ts);
+      for (let i = 0; i < arr.length - MAX_READY; i++) ready.delete(arr[i][0]);
+    }
+
+    /* 这条点歌有没有直供音源：先按 id（worker 抄的就是原始 id），
+     * 再按歌名精确匹配兜底（worker 若用了自己的 id 才认得出来）。 */
+    function vodFor(it) {
+      if (!it || it.del) return null;
+      const direct = ready.get(it.id);
+      if (direct) return direct;
+      const a = norm(it.title);
+      if (!a) return null;
+      let out = null;
+      ready.forEach((v) => { if (!out && norm(v.title) === a) out = v; });
+      return out;
+    }
+
+    function findItem(id, title) {
+      if (id && items.has(id)) return items.get(id);   // 主路径：worker 抄的就是这个 id
+      const a = norm(title);                            // 兜底：worker 用了自己的 id
+      if (!a) return null;
+      let out = null;
+      items.forEach((it) => { if (!out && !it.del && norm(it.title) === a) out = it; });
+      return out;
+    }
+
+    /* 播报克制三道闸：老消息不翻旧账、播报不连珠炮、气泡不排长队。
+     * 重连/刷新会把 retain 的备好消息**整批回放**，不设闸的话用户一开 App
+     * 就对着十几条念完为止的气泡。 */
+    function announceReady(it, e) {
+      const now = Date.now();
+      if (e.ts && now - e.ts > READY_FRESH) return;
+      if (sayQueue.length >= 2) return;
+      if (now - lastReadySay < 4000) return;
+      lastReadySay = now;
+      say('《' + it.title + '》备好了，点一下就听 🎵');
+    }
+
     /* ---------------- MQTT 同步 ---------------- */
     let client = null;
     let brokerIdx = 0;
@@ -372,17 +461,23 @@
         clearTimeout(guard);
         synced = true;
         try { c.subscribe(Q_NS + '/#', { qos: 0 }); } catch (_) { /* 忽略 */ }
+        try { c.subscribe(READY_NS + '/#', { qos: 0 }); } catch (_) { /* 忽略 */ }
         publish(true);
         render();
         say('点歌台已上线，全网听友的点歌会同步到这里');
       });
       c.on('message', (topic, payload) => {
         if (client !== me || topic === myTopic) return;
-        let list = null;
-        try { list = JSON.parse(payload ? payload.toString() : ''); } catch (_) { return; }
+        let j = null;
+        try { j = JSON.parse(payload ? payload.toString() : ''); } catch (_) { return; }
         // 空载荷 = 对端下线（LWT）。它的条目早已被我们合并进本地，不会丢。
-        if (!list) { return; }
-        if (merge(list)) { prune(); publish(); render(); }
+        if (!j) { return; }
+        if (Array.isArray(j)) {
+          if (merge(j)) { prune(); publish(); render(); }
+          return;
+        }
+        // 对象载荷 = 某首歌的音源备好了（队列快照是数组，两者天然可分）
+        if (topic.indexOf(READY_NS + '/') === 0 && onReady(j)) render();
       });
       c.on('error', () => { /* 静默，交给重连/换线 */ });
       c.on('close', () => { if (client === me) { synced = false; render(); } });
@@ -406,7 +501,11 @@
     const reqList = $('reqList');
     const reqHint = $('reqHint');
 
-    function stLabel(it) {
+    function stLabel(it, ve) {
+      // 有直供音源就按音源说：哪怕扫描还超时、还落空，歌其实已经能播了
+      if (ve) return it.st === 'playing'
+        ? { text: '正在播', cls: 'st-play' }
+        : { text: '可播放 · 一点就听', cls: 'st-ready' };
       // 卡死检测：发起者可能已经下线，searching 超时就别一直装作在找
       if (it.st === 'searching' && it.scanAt && Date.now() - it.scanAt > TUNING.deadline) {
         return { text: '找歌超时', cls: 'st-miss' };
@@ -429,9 +528,13 @@
       list.forEach((it, i) => {
         const li = document.createElement('li');
         li.className = 'req-item';
-        const lab = stLabel(it);
-        // 只有「找到台」的条目可点（点它 = 一起听），其余是纯状态展示
-        const canPlay = it.gi >= 0 && (it.st === 'ready' || it.st === 'playing');
+        const ve = vodFor(it);
+        const lab = stLabel(it, ve);
+        // 可点有两条路：**有直供音源**（阶段2，直接播单曲）或**扫到台了**
+        // （阶段1，切台一起听）。音源那条要求 gi<0 —— 扫到台时以台为准，
+        // 免得同一首歌在「切台」和「播单曲」之间来回跳。
+        const useVod = !!ve && it.gi < 0;
+        const canPlay = useVod || (it.gi >= 0 && (it.st === 'ready' || it.st === 'playing'));
         if (canPlay) li.classList.add('can-play');
         const num = document.createElement('b');
         num.className = 'req-no';
@@ -454,8 +557,19 @@
         li.appendChild(st);
         if (canPlay) {
           li.addEventListener('click', () => {
-            R.select(it.gi);
-            say('切到「' + it.stn + '」一起听《' + it.title + '》');
+            if (useVod && typeof R.playVod === 'function') {
+              R.playVod({ url: ve.url, title: it.title, from: it.who, dur: ve.dur });
+              say('给你放《' + it.title + '》' + (it.who ? '，' + it.who + ' 点的' : '') + ' 🎵');
+              return;
+            }
+            if (it.gi >= 0) {
+              R.select(it.gi);
+              say('切到「' + it.stn + '」一起听《' + it.title + '》');
+              return;
+            }
+            // 有音源但这一版 app 还没有 playVod（缓存里的旧 app.js）：
+            // 明说，别让用户点了没反应以为坏了
+            R.toast('播放能力还没更新到，先检查一下更新');
           });
         }
         frag.appendChild(li);
@@ -584,11 +698,18 @@
       score: score, norm: norm, visible: visible, render: render, say: say,
       publish: publish, scan: scan, buildOrder: buildOrder,
       myName: myName, setNick: setNick, tuning: TUNING,
+      /* 「歌已备好」这条链路：阶段 1 没有 worker 发它，测试要能直接喂消息 */
+      ready: ready, onReady: onReady, vodFor: vodFor, findItem: findItem,
+      /* 播报闸门要看队列长度才能验（第一条会被立刻取走开始打字，长度变 0） */
+      sayQueueLen: () => sayQueue.length,
       /* 是否真的连上点歌台：mock 测试验不出来 retain 回放/遗嘱这些 broker 行为， */
       /* 真实 broker E2E 要靠它判断「可以开始断言了」，不靠猜时间。 */
       isSynced: () => synced,
     };
-  } catch (_) {
-    /* 点歌是可选功能，任何异常都不能影响电台本身 */
+  } catch (err) {
+    /* 点歌是可选功能，任何异常都不能影响电台本身 —— 这条不变。
+     * 但不许无声：无声的兜底会把 ReferenceError 这类真 bug 变成
+     * 「功能悄悄消失」，用户只看到点歌台没反应，日志里一个字都没有。 */
+    try { console.error('[fm891] 点歌模块加载失败：', err); } catch (_) { /* 忽略 */ }
   }
 })();
