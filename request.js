@@ -1,31 +1,25 @@
-/* 拾光电台 FM89.1 — 在线点歌
+/* 拾光电台 FM89.1 — 在线点歌（纯点播版，电台台单已下架）
  * ============================================================================
  * 【这一版做什么】
  *  1. 多人同步点歌队列：每个客户端把自己看到的**全量**队列 retain 到
  *     fm891-radio/q/<cid>，同时订阅 fm891-radio/q/#，收到别人的快照后按
  *     条目 id 做并集合并。没有中心服务，但所有在线客户端会收敛到同一份
  *     队列；条目一旦被任何在线客户端复制进快照，提出者下线也不会丢歌。
- *  2. 全网找台（**这就是"主播找歌"**）：点歌后并发拉各台的 nowplaying
- *     （蜻蜓官方接口，app.js 的在线人数用的同一个），谁**正在放**这首歌就
- *     走 selectStation() 正式切台。真出声、零后端、零版权风险。
+ *     条目新增 to（送给谁）/ msg（祝福语）两个字段，云端会朗读播报。
+ *  2. 云端找歌（**全在服务器主程序里**）：点歌后云端先查歌曲仓库，命中
+ *     直接出片；没有才走电报下载。找歌/下载/转码/合成播报的实时进度走
+ *     fm891-radio/p/<id>，标签按进度改写。
  *  3. 主播气泡：事件驱动的打字机播报。
- *  4. **歌已备好**（阶段 2 的落点，本版已就位但**没有发布者**）：worker 往
- *     fm891-radio/r/<id> 发一条 retain 的音源，这里挂到对应条目上，标签
- *     变「可播放 · 一点就听」，点它走 __radio.playVod() 播单曲。接上 worker
- *     之后阶段 1 的队列/气泡/列表/昵称**原样复用**，只有音源多了一路。
- *
- * 【为什么现在还没有电报那一路】
- *  @music_v1bot 的协议已逆向清楚（/search → 编号列表 + inline 键盘 →
- *  getCallbackQueryAnswer → messageAudio），但它回的是**电报音频文件**而不
- *  是 HTTP 直链，下载必须走 MTProto，因此绕不开一台常驻后端。缺后端时，
- *  第 4 条路径就是空的 —— 存在它不会改变现在的任何行为（ready-test 有断言）。
+ *  4. 音源 ready：fm891-radio/r/<id> 的 retain 里带「播报+歌」成片，
+ *     点条目走 __radio.playVod() 播单曲。
+ *  5. **云同步开播**：fm891-radio/air（retain）= 服务器此刻在放的歌，带
+ *     startedAt；app.js 收到后对齐进度自动跟播 —— 所有人同一时刻听同一段，
+ *     像真电台。AI 播报（谁点的、送给谁、祝福语）已拼在音频开头。
  *
  * 【隔离原则】
- *  本模块只通过 window.__radio 碰播放，**两个入口，各有各的场合**：
- *   - selectStation()：扫到电台在放这首歌（阶段 1，走直播）
- *   - playVod()      ：有现成的音源文件（阶段 2，走单曲）
+ *  本模块只通过 window.__radio 碰播放，入口只有 playVod（单曲/跟播都走它）。
  *  绝不直接操作 audio、不碰 playToken / switchUntil / 重连体系（v1.15 刚
- *  修完的换源防护）。整体 try/catch 降级，本模块挂了不影响电台本身 ——
+ *  修完的换源防护）。整体 try/catch 降级，本模块挂了不影响播放器本身 ——
  *  但降级要 console.error 喊一声，静默兜底会把 ReferenceError 这类真 bug
  *  变成「点歌台悄悄没了」，日志里一个字都查不到。
  */
@@ -33,7 +27,7 @@
   try {
     if (typeof mqtt === 'undefined') return;
     const R = window.__radio;
-    if (!R || !R.stations || !R.select) return;
+    if (!R || typeof R.playVod !== 'function') return;
 
     const $ = (id) => document.getElementById(id);
 
@@ -61,16 +55,8 @@
     const PROG_FRESH = 6 * 60000;   // 进度 6 分钟没更新就不采信（worker 挂了/转码极慢）
     const MAX_PROG = 60;
     const prog = new Map();         // id -> {stage, done, total, eta, ts}
-    /* 扫描节流参数单独成表，并从 __req 暴露出去：测试要把 deadline 压到几十
-     * 毫秒才能验证「硬截止真的会停」。光读源码断言等于赌它没被改坏。 */
-    const TUNING = {
-      npTimeout: 7000,      // 单台 nowplaying 拉取超时
-      concurrency: 10,      // 并发数：公共接口，别打太猛
-      interBatch: 80,       // 轮次之间的喘息，别把公共接口当压测目标
-      deadline: 150000,     // 找歌 2.5 分钟硬停（见 scan 内的说明）
-    };
-
-    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    /* 云同步开播：服务器 retain 的「此刻在放」，带 startedAt 对齐所有人进度 */
+    const AIR_NS = 'fm891-radio/air';
 
     /* ---------------- 主播气泡（打字机 + 播报队列） ---------------- */
     const djText = $('djText');
@@ -176,6 +162,8 @@
           id: id,
           cid: typeof it.cid === 'string' ? it.cid.slice(0, 40) : '',
           who: typeof it.who === 'string' ? it.who.slice(0, 16) : '听友',
+          to: typeof it.to === 'string' ? it.to.slice(0, 16) : '',
+          msg: typeof it.msg === 'string' ? it.msg.slice(0, 60) : '',
           title: title,
           ts: Number(it.ts) || Date.now(),
           ver: ver,
@@ -195,7 +183,7 @@
     }
 
     /* ---------------- 点歌 ---------------- */
-    function addRequest(title) {
+    function addRequest(title, to, msg) {
       const t = String(title || '').trim().slice(0, 30);
       if (!t) { R.toast('先输入歌名'); return; }
       const now = Date.now();
@@ -209,10 +197,14 @@
       });
       if (dup) { R.toast('你已经点过《' + t + '》啦'); return; }
 
+      const sTo = String(to || '').trim().slice(0, 16);
+      const sMsg = String(msg || '').trim().slice(0, 60);
       const it = {
         id: myId + '-' + (++mySeq),
         cid: myId,
         who: myName(),
+        to: sTo,
+        msg: sMsg,
         title: t,
         ts: now,
         ver: 1,
@@ -228,25 +220,13 @@
       prune();      // 先淘汰超限的再发，否则淘汰结果发不出去，对端一会儿又同步回来
       publish();
       render();
-      say('收到 ' + it.who + ' 点的《' + t + '》，主播全网找歌中…');
-      scan(it);
+      // 电台台单已下架：找歌全部交给云端主程序（先查仓库，没有再电报下载）。
+      // 客户端不再自己扫台 —— 进度与结果都从 p/* 和 r/* 频道来。
+      say('收到 ' + it.who + ' 点的《' + t + '》' +
+        (sTo ? '，送给 ' + sTo : '') + '，云端主播马上安排 🎵');
     }
 
-    /* ---------------- 全网找台 ----------------
-     * 拉每台的 nowplaying → 归一化匹配 → 命中就正式切台。
-     * 音乐类台在前（命中率最高），先扫 108 个音乐台通常几秒内就有结果。 */
-    let scanToken = 0;
-
-    function buildOrder() {
-      const st = R.stations();
-      const music = [];
-      const rest = [];
-      for (let i = 0; i < st.length; i++) {
-        (st[i] && st[i].cat === 'music' ? music : rest).push(i);
-      }
-      return music.concat(rest);
-    }
-
+    /* 归一化：配对「歌名」用（服务端仓库键 norm_key 同款规则） */
     function norm(s) {
       return String(s || '')
         .toLowerCase()
@@ -254,115 +234,19 @@
         .replace(/[^0-9a-z\u4e00-\u9fa5]+/g, '');       // 其余非中英数字全部剔除
     }
 
-    /* 打分：完全相等 3 > 前缀 2 > 包含 1。短歌名只认等值/前缀，防止
-     * 「江南」匹配上「江南皮革厂」之外的长串误伤（前缀仍可能命中，
-     * 但那是 nowplaying 真以该歌名开头，可接受）。 */
-    function score(title, np) {
-      const a = norm(title);
-      const b = norm(np);
-      if (!a || !b) return 0;
-      if (a === b) return 3;
-      if (a.length >= 2 && b.indexOf(a) === 0) return 2;
-      if (a.length >= 3 && b.indexOf(a) > 0) return 1;
-      return 0;
-    }
+    /* （电台台单已下架：score / fetchNp / scan / hit / miss 随台单一并移除。
+     *   找歌全部由云端主程序完成 —— 先查歌曲仓库，没有再电报下载；
+     *   客户端只订阅进度 p/* 与音源 r/*，不再自己拉 nowplaying。） */
 
-    async function fetchNp(url) {
-      const cid = R.qtId(url);
-      if (!cid) return '';
-      const ctl = typeof AbortController === 'function' ? new AbortController() : null;
-      const timer = setTimeout(() => { try { ctl && ctl.abort(); } catch (_) {} }, TUNING.npTimeout);
-      try {
-        const opt = { cache: 'no-store' };
-        if (ctl) opt.signal = ctl.signal;
-        const res = await fetch(R.api + cid, opt);
-        if (!res.ok) return '';
-        const j = await res.json();
-        const np = j && j.Data && j.Data.nowplaying;
-        return typeof np === 'string' ? np : '';
-      } catch (_) {
-        return '';          // 单台失败不算失败，下一批继续
-      } finally {
-        clearTimeout(timer);
-      }
-    }
-
-    async function scan(item) {
-      const token = ++scanToken;
-      const started = Date.now();
-      const order = buildOrder();
-      const st = R.stations();
-      let nextReport = 100;   // 每扫约 100 台播报一次进度，别刷屏
-      for (let i = 0; i < order.length; i += TUNING.concurrency) {
-        if (token !== scanToken || items.get(item.id) !== item || item.del) return;
-        // 硬截止：stLabel 只负责把文案改成「找歌超时」，真正停止必须在这里做。
-        // 否则 887 台全超时就是 887 次请求连着发十几分钟，既费电又会把
-        // 同一个官方接口（在线人数角标也走它）一起拖下水。
-        if (Date.now() - started > TUNING.deadline) { miss(item); return; }
-        const batch = order.slice(i, i + TUNING.concurrency);
-        const got = await Promise.all(batch.map((gi) => fetchNp(st[gi].url)));
-        let best = null;
-        let bestScore = 0;
-        for (let k = 0; k < batch.length; k++) {
-          if (!got[k]) continue;
-          const s = score(item.title, got[k]);
-          if (s > bestScore) { bestScore = s; best = { gi: batch[k], np: got[k] }; }
-        }
-        if (best) { hit(item, best); return; }
-        if (i >= nextReport) {
-          // 有 worker 进度时这句就是噪音：列表里已经写着「下载中 24/49 MB」
-          if (!freshProg(item.id)) say('还在找《' + item.title + '》…已扫 ' + i + ' 个台');
-          nextReport += 100;
-        }
-        // 轮次之间喘口气：公共接口不该被当成压测目标
-        await sleep(TUNING.interBatch);
-      }
-      miss(item);
-    }
-
-    function hit(item, best) {
-      if (item.del || items.get(item.id) !== item) return;
-      const stn = (R.stations()[best.gi] || {}).name || '电台';
-      item.st = 'ready';
-      item.gi = best.gi;
-      item.stn = stn;
-      item.np = best.np;
-      item.ver += 1;
-      publish();
-      render();
-      // 自己点的歌：直接走正式切台入口（会顺带刷台单/原生桥/在线人数/代际）
-      if (item.mine) {
-        item.st = 'playing';
-        item.ver += 1;
-        publish();
-        render();
-        R.select(best.gi);
-        say('主播在「' + stn + '」找到了《' + item.title + '》，切过去啦 🎵');
-      } else {
-        say(item.who + ' 点的《' + item.title + '》来了，在「' + stn + '」，点一下一起听');
-      }
-    }
-
-    function miss(item) {
-      if (item.del || items.get(item.id) !== item) return;
-      item.st = 'miss';
-      item.ver += 1;
-      publish();
-      render();
-      // worker 正下着这首歌时，阶段 1 的「没台在放」是**过时结论** ——
-      // 这句话一播出去用户就以为没戏了，而歌其实两分钟后就绪。
-      if (freshProg(item.id)) return;
-      say('全网电台这会儿都没在放《' + item.title + '》，先记进点歌池了');
-    }
-
-    /* ---------------- 阶段 2 的实时进度 ---------------- */
-    /* worker 在找歌/下载/转码三个阶段各发一条 retain；空载荷表示出结果了。 */
+    /* ---------------- 云端进度 ---------------- */
+    /* 云端在 search/download/transcode/merge 四阶段各发一条 retain；
+     * 空载荷表示出结果了。 */
     function onProg(msg) {
       if (!msg || typeof msg !== 'object') return false;
       const id = typeof msg.id === 'string' ? msg.id : '';
       if (!id) return false;
       if (!msg.stage) { prog.delete(id); return true; }
-      const stages = ['search', 'download', 'transcode'];
+      const stages = ['search', 'download', 'transcode', 'merge'];
       prog.set(id, {
         stage: stages.indexOf(msg.stage) >= 0 ? msg.stage : 'search',
         done: Math.max(0, Number(msg.done) || 0),
@@ -397,6 +281,7 @@
     }
 
     function progLabel(p) {
+      if (p.stage === 'merge') return { text: '云端合成播报中…', cls: 'st-search' };
       if (p.stage === 'transcode') return { text: '转码中… 马上就好', cls: 'st-search' };
       if (p.stage !== 'download' || !p.total) return { text: '全网找歌中…', cls: 'st-search' };
       const mb = 1048576;
@@ -430,6 +315,8 @@
         id: id, url: url, dur: dur, ts: ts, ver: ver,
         title: title,
         from: typeof msg.from === 'string' ? msg.from.slice(0, 16) : '',
+        to: typeof msg.to === 'string' ? msg.to.slice(0, 16) : '',
+        ann: typeof msg.ann === 'string' ? msg.ann.slice(0, 80) : '',
       };
       ready.set(id, entry);
       pruneReady();
@@ -478,6 +365,33 @@
       if (now - lastReadySay < 4000) return;
       lastReadySay = now;
       say('《' + it.title + '》备好了，点一下就听 🎵');
+    }
+
+    /* ---------------- 云同步开播 ---------------- */
+    /* 服务器 retain 的「此刻在放」：校验后交给 app.js 的 onAir ——
+     * 正在跟播的人自动切到下一首，没在听的人露出「一起听」条。 */
+    let airState = null;
+
+    function onAirMsg(j) {
+      if (!j || typeof j !== 'object') return false;
+      const id = typeof j.id === 'string' ? j.id : '';
+      const url = typeof j.url === 'string' ? j.url : '';
+      const startedAt = Number(j.startedAt) || 0;
+      // 音源地址是能直接拉起播放的东西，schema 不合格一律丢弃
+      if (!id || !/^https?:\/\//i.test(url) || !startedAt) return false;
+      const dur = Number(j.dur) || 0;
+      if (dur && (dur < 1 || dur > 6 * 3600)) return false;
+      airState = {
+        id: id, url: url, dur: dur, startedAt: startedAt,
+        ver: Number(j.ver) || 0,
+        title: typeof j.title === 'string' ? j.title.slice(0, 60) : '',
+        from: typeof j.from === 'string' ? j.from.slice(0, 16) : '',
+        ann: typeof j.ann === 'string' ? j.ann.slice(0, 80) : '',
+      };
+      if (typeof R.onAir === 'function') {
+        try { R.onAir(airState); } catch (_) { /* app 挂了不拖累点歌台 */ }
+      }
+      return true;
     }
 
     /* ---------------- MQTT 同步 ---------------- */
@@ -529,6 +443,7 @@
         try { c.subscribe(Q_NS + '/#', { qos: 0 }); } catch (_) { /* 忽略 */ }
         try { c.subscribe(READY_NS + '/#', { qos: 0 }); } catch (_) { /* 忽略 */ }
         try { c.subscribe(PROG_NS + '/#', { qos: 0 }); } catch (_) { /* 忽略 */ }
+        try { c.subscribe(AIR_NS, { qos: 0 }); } catch (_) { /* 忽略 */ }
         publish(true);
         render();
         say('点歌台已上线，全网听友的点歌会同步到这里');
@@ -557,6 +472,8 @@
         }
         // 对象载荷 = 某首歌的音源备好了（队列快照是数组，两者天然可分）
         if (topic.indexOf(READY_NS + '/') === 0 && onReady(j)) render();
+        // 云开播（retain 的「此刻在放」，单主题不是子树）
+        if (topic === AIR_NS) onAirMsg(j);
       });
       c.on('error', () => { /* 静默，交给重连/换线 */ });
       c.on('close', () => { if (client === me) { synced = false; render(); } });
@@ -581,25 +498,25 @@
     const reqHint = $('reqHint');
 
     function stLabel(it, ve) {
-      // 有直供音源就按音源说：哪怕扫描还超时、还落空，歌其实已经能播了
+      // 有直供音源就按音源说：哪怕进度还挂着，歌其实已经能播了
       if (ve) return it.st === 'playing'
         ? { text: '正在播', cls: 'st-play' }
         : { text: '可播放 · 一点就听', cls: 'st-ready' };
-      // 阶段 2 的实时进度比阶段 1 的任何结论都新：扫台 2.5 分钟判 miss、
-      // 判超时的那会儿，worker 往往正下到一半。只在阶段 1 还没听出结果时
-      // （searching/miss）才以进度为准 —— 扫到台了就该按台说，不能拿
-      // 「下载中」去盖住一个此刻就能点开听的台。
+      // 云端进度（找歌/下载/转码/合成）比本地任何结论都新
       const p = freshProg(it.id);
       if (p && (it.st === 'searching' || it.st === 'miss')) return progLabel(p);
-      // 卡死检测：发起者可能已经下线，searching 超时就别一直装作在找
-      if (it.st === 'searching' && it.scanAt && Date.now() - it.scanAt > TUNING.deadline) {
-        return { text: '找歌超时', cls: 'st-miss' };
+      // 卡死检测：发起者可能已下线，searching 太久别一直装作在找
+      // （云端给每首 10 分钟的找歌窗口，超过这个量级才说没找到）
+      if (it.st === 'searching' && it.scanAt && Date.now() - it.scanAt > 10 * 60000) {
+        return { text: '云端还在找 · 请稍候', cls: 'st-miss' };
       }
       switch (it.st) {
-        case 'searching': return { text: '主播找歌中…', cls: 'st-search' };
-        case 'ready': return { text: '可播放 · 一起听', cls: 'st-ready' };
-        case 'playing': return { text: '正在播', cls: 'st-play' };
-        case 'miss': return { text: '暂无电台在放', cls: 'st-miss' };
+        case 'searching': return { text: '云端找歌中…', cls: 'st-search' };
+        // 旧客户端遗留的 ready/playing：没有音源（ve 为空）就不算数，
+        // 免得标签喊「可播放」而条目根本点不动
+        case 'ready':
+        case 'playing': return { text: '排队中', cls: 'st-wait' };
+        case 'miss': return { text: '暂时没找到', cls: 'st-miss' };
         default: return { text: '排队中', cls: 'st-wait' };
       }
     }
@@ -615,11 +532,9 @@
         li.className = 'req-item';
         const ve = vodFor(it);
         const lab = stLabel(it, ve);
-        // 可点有两条路：**有直供音源**（阶段2，直接播单曲）或**扫到台了**
-        // （阶段1，切台一起听）。音源那条要求 gi<0 —— 扫到台时以台为准，
-        // 免得同一首歌在「切台」和「播单曲」之间来回跳。
-        const useVod = !!ve && it.gi < 0;
-        const canPlay = useVod || (it.gi >= 0 && (it.st === 'ready' || it.st === 'playing'));
+        // 可点只有一条路：**有直供音源**（云端出片了，点一下播单曲）。
+        // 电台台单已下架，gi/stn 只作为旧快照的兼容字段留存，不再参与交互。
+        const canPlay = !!ve;
         if (canPlay) li.classList.add('can-play');
         const num = document.createElement('b');
         num.className = 'req-no';
@@ -631,9 +546,15 @@
         t.textContent = it.title;
         const meta = document.createElement('small');
         meta.className = 'req-meta';
-        meta.textContent = it.who + (it.stn ? ' · ' + it.stn : '');
+        meta.textContent = it.who + (it.to ? ' → ' + it.to : '');
         body.appendChild(t);
         body.appendChild(meta);
+        if (it.msg) {
+          const m = document.createElement('small');
+          m.className = 'req-msg';
+          m.textContent = '“' + it.msg + '”';
+          body.appendChild(m);
+        }
         const st = document.createElement('i');
         st.className = 'req-st ' + lab.cls;
         st.textContent = lab.text;
@@ -642,14 +563,14 @@
         li.appendChild(st);
         if (canPlay) {
           li.addEventListener('click', () => {
-            if (useVod && typeof R.playVod === 'function') {
-              R.playVod({ url: ve.url, title: it.title, from: it.who, dur: ve.dur });
-              say('给你放《' + it.title + '》' + (it.who ? '，' + it.who + ' 点的' : '') + ' 🎵');
-              return;
-            }
-            if (it.gi >= 0) {
-              R.select(it.gi);
-              say('切到「' + it.stn + '」一起听《' + it.title + '》');
+            if (typeof R.playVod === 'function') {
+              R.playVod({
+                url: ve.url, title: it.title, from: it.who,
+                ann: ve.ann || (it.who + '点播《' + it.title + '》' +
+                  (it.to ? '，送给' + it.to : '')),
+                dur: ve.dur,
+              });
+              say('给你放《' + it.title + '》' + (it.to ? '，送给 ' + it.to : '') + ' 🎵');
               return;
             }
             // 有音源但这一版 app 还没有 playVod（缓存里的旧 app.js）：
@@ -721,6 +642,8 @@
     const reqMask = $('reqMask');
     const reqForm = $('reqForm');
     const reqInput = $('reqInput');
+    const reqTo = $('reqTo');       // 送给谁（选填，会进播报词）
+    const reqMsg = $('reqMsg');     // 祝福语（选填，云端 AI 朗读拼在歌前面）
     const reqClose = $('reqClose');
     const nickInput = $('nickInput');
     let nickTimer = null;
@@ -748,8 +671,12 @@
       reqForm.addEventListener('submit', (e) => {
         e.preventDefault();
         const v = reqInput ? reqInput.value : '';
-        addRequest(v);
+        const to = reqTo ? reqTo.value : '';
+        const msg = reqMsg ? reqMsg.value : '';
+        addRequest(v, to, msg);
         if (reqInput) reqInput.value = '';
+        if (reqTo) reqTo.value = '';
+        if (reqMsg) reqMsg.value = '';
       });
     }
     if (nickInput) {
@@ -780,14 +707,16 @@
     /* 暴露给测试用（生产环境无副作用） */
     window.__req = {
       items: items, add: addRequest, merge: merge, prune: prune,
-      score: score, norm: norm, visible: visible, render: render, say: say,
-      publish: publish, scan: scan, buildOrder: buildOrder,
-      myName: myName, setNick: setNick, tuning: TUNING,
-      /* 「歌已备好」这条链路：阶段 1 没有 worker 发它，测试要能直接喂消息 */
+      norm: norm, visible: visible, render: render, say: say,
+      publish: publish,
+      myName: myName, setNick: setNick,
+      /* 「歌已备好」这条链路：测试要能直接喂消息 */
       ready: ready, onReady: onReady, vodFor: vodFor, findItem: findItem,
-      /* 阶段 2 的实时进度：和 ready 一样要能被测试直接喂消息 */
+      /* 云端实时进度：和 ready 一样要能被测试直接喂消息 */
       prog: prog, onProg: onProg, freshProg: freshProg, progLabel: progLabel,
       clearProg: clearProg,
+      /* 云开播（fm891-radio/air）：验 schema 校验与向 app 转发 */
+      air: () => airState, onAirMsg: onAirMsg,
       /* 播报闸门要看队列长度才能验（第一条会被立刻取走开始打字，长度变 0） */
       sayQueueLen: () => sayQueue.length,
       /* 是否真的连上点歌台：mock 测试验不出来 retain 回放/遗嘱这些 broker 行为， */

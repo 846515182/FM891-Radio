@@ -716,7 +716,7 @@ footer {
 
 /* ==================== 在线点歌（阶段 1） ==================== */
 
-/* 主播气泡：分类条上方一条，点击打开点歌台 */
+/* 主播气泡：播放器下方一条，点击打开点歌台 */
 .dj-bubble {
   display: flex;
   align-items: center;
@@ -771,6 +771,19 @@ footer {
   box-shadow: 0 6px 14px rgba(236, 72, 152, 0.4);
 }
 
+/* 云同步开播条：绿调与点歌气泡区分，点它加入此刻的开播 */
+.air-bar {
+  border-color: rgba(52, 211, 153, 0.4);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.18), rgba(56, 189, 248, 0.12));
+}
+
+.air-bar .dj-face { filter: drop-shadow(0 2px 6px rgba(16, 185, 129, 0.5)); }
+
+.air-bar .dj-cta {
+  background: linear-gradient(135deg, #10b981, #38bdf8);
+  box-shadow: 0 6px 14px rgba(16, 185, 129, 0.4);
+}
+
 /* 点歌面板 */
 .req-dialog {
   width: min(360px, 92vw);
@@ -778,11 +791,13 @@ footer {
   flex-direction: column;
 }
 
-.req-form { display: flex; gap: 8px; margin: 0 0 8px; }
+/* 竖排四件套：歌名 / 送给谁 / 祝福语 / 提交 */
+.req-form { display: flex; flex-direction: column; gap: 8px; margin: 0 0 8px; }
 
-.req-form input {
-  flex: 1;
-  min-width: 0;
+.req-form input,
+.req-form textarea {
+  width: 100%;
+  box-sizing: border-box;
   padding: 11px 13px;
   border-radius: 12px;
   border: 1px solid var(--stroke);
@@ -790,13 +805,15 @@ footer {
   color: var(--text);
   font: inherit;
   font-size: 14px;
+  resize: none;
 }
 
-.req-form input::placeholder { color: rgba(184, 173, 224, 0.6); }
+.req-form input::placeholder,
+.req-form textarea::placeholder { color: rgba(184, 173, 224, 0.6); }
 
 .req-form button {
-  flex: none;
-  padding: 0 16px;
+  width: 100%;
+  padding: 11px 16px;
   border: none;
   border-radius: 12px;
   background: var(--grad);
@@ -860,6 +877,16 @@ footer {
 .req-meta {
   font-size: 11px;
   color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 祝福语：跟在点歌人后面 —— 谁送给谁、说了什么，列表里一眼看见 */
+.req-msg {
+  font-size: 11px;
+  color: var(--accent2);
+  opacity: 0.9;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#0b0718" />
   <title>拾光电台 FM89.1</title>
-  <meta name="description" content="拾光电台 FM89.1 — 拾起耳朵里的好时光，手机在线音乐直播" />
+  <meta name="description" content="拾光电台 FM89.1 — 拾起耳朵里的好时光，云端点播电台" />
 
   <link rel="manifest" href="manifest.json" />
   <link rel="icon" type="image/png" href="icons/icon-192.png" />
@@ -25,7 +25,7 @@
       <div class="brand">
         <img class="brand-avatar" src="icons/icon-192.png" alt="拾光电台" />
         <span class="brand-logo">拾光<span>FM89.1</span></span>
-        <span class="live-dot" id="liveDot" hidden>● 直播中</span>
+        <span class="live-dot" id="liveDot" hidden>● 开播中</span>
       </div>
       <p class="slogan">拾起耳朵里的好时光 · MUSIC RADIO</p>
       <div class="online-pill" id="onlinePill" hidden aria-live="polite">🎧 在线 <b id="onlineCount">–</b> 人<i class="src" id="onlineSrc" hidden>官方</i></div>
@@ -42,21 +42,15 @@
           <div class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
         </div>
 
-        <h1 id="stationName">华语流行热歌</h1>
-        <p class="desc" id="stationDesc">点击播放开始收听</p>
+        <h1 id="stationName">拾光点播台</h1>
+        <p class="desc" id="stationDesc">点一首歌，云端主播放给你听</p>
         <p class="now-title" id="nowTitle"></p>
       </div>
 
       <section class="controls">
-        <button class="round-btn" id="prevBtn" type="button" aria-label="上一个频道">
-          <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6L18 18V6z"/></svg>
-        </button>
         <button class="play-btn" id="playBtn" type="button" aria-label="播放">
           <svg class="ic-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
           <svg class="ic-pause" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
-        </button>
-        <button class="round-btn" id="nextBtn" type="button" aria-label="下一个频道">
-          <svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
         </button>
       </section>
 
@@ -79,9 +73,12 @@
         <span class="dj-cta">点歌</span>
       </button>
 
-      <nav class="cats" id="catList" aria-label="频道分类"></nav>
-
-      <nav class="stations" id="stationList" aria-label="频道列表"></nav>
+      <!-- 云同步开播：服务器在放什么，全网同一时刻听同一段；点它一起听 -->
+      <button class="dj-bubble air-bar" id="airBar" type="button" hidden aria-label="一起听云开播">
+        <span class="dj-face" aria-hidden="true">📻</span>
+        <span class="dj-text" id="airText">正在开播</span>
+        <span class="dj-cta">一起听</span>
+      </button>
     </section>
 
     <footer>
@@ -115,6 +112,9 @@
       <h3 id="reqTitle">🎧 在线点歌</h3>
       <form class="req-form" id="reqForm" autocomplete="off">
         <input id="reqInput" type="text" placeholder="输入歌名，主播全网找" maxlength="30" />
+        <input id="reqTo" type="text" placeholder="送给谁（选填）" maxlength="16" />
+        <textarea id="reqMsg" rows="2" maxlength="60"
+                  placeholder="祝福语 / 内心独白（选填，AI 会朗读播报）"></textarea>
         <button class="primary" id="reqGo" type="submit">点歌</button>
       </form>
       <p class="req-hint" id="reqHint"></p>

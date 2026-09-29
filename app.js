@@ -1072,6 +1072,8 @@ function renderCats() {
 }
 
 function renderStations() {
+  // 台单已下架：元素不存在时直接返回（渲染/选台路径全部幂等）
+  if (!stationListEl) return;
   const vis = visibleIdx();
   // 快路径：分类没变且可见数量一致 → 只切换选中态，不重建 DOM。
   // 台单有 887 路，每次切台都重建就是肉眼可见的卡顿（用户反馈的「按下去半天才响」）。
@@ -1111,8 +1113,9 @@ function renderStations() {
   }
 }
 
-/* 事件委托：887 个按钮共用一个监听器（逐个 addEventListener 会白扔 887 个闭包） */
-stationListEl.addEventListener('click', (e) => {
+/* 事件委托：887 个按钮共用一个监听器（逐个 addEventListener 会白扔 887 个闭包）。
+ * 台单已下架、元素被移除时跳过 —— 旧路径再点台就静默忽略。 */
+if (stationListEl) stationListEl.addEventListener('click', (e) => {
   const btn = e.target && e.target.closest ? e.target.closest('.station') : null;
   if (!btn || btn.dataset.i === undefined) return;
   selectStation(Number(btn.dataset.i), true);
@@ -1130,15 +1133,15 @@ if (catListEl) {
 }
 
 function updateNowPlaying() {
-  const s = current();
-  stationNameEl.textContent = s.name;
-  stationDescEl.textContent = s.desc;
-  document.title = s.name;
+  // 电台台单已下架：启动/复位一律显示点播台的待机文案
+  if (stationNameEl) stationNameEl.textContent = '拾光点播台';
+  if (stationDescEl) stationDescEl.textContent = '点一首歌，云端主播放给你听';
+  document.title = '拾光电台 FM89.1';
   nowTitle = '';
   const nt = $('nowTitle');
   if (nt) nt.textContent = '';
   if (window.AndroidIcy) {
-    try { window.AndroidIcy.station(s.name); } catch (_) { /* 忽略 */ }
+    try { window.AndroidIcy.station('拾光电台 FM89.1'); } catch (_) { /* 忽略 */ }
   }
   updateMediaSession();
 }
@@ -1335,11 +1338,86 @@ function pause() {
   }
 }
 
+/* ---------------- 云同步开播（像真电台） ----------------
+ * 服务器在 fm891-radio/air 上 retain 当前开播的歌（含 startedAt/dur/ann）。
+ * 所有 App 同一时刻听同一段：加入时按「已播时长」seek 对齐进度，换歌时
+ * 自动跟着切 —— 播报（谁点的、送给谁、祝福语）已由云端拼在音频开头。 */
+let airInfo = null;      // 最新一条云开播消息
+let following = false;   // 是否跟着云开播听
+let playingAirId = '';   // 当前这轮播的是哪条 air
+
+function renderAirBar() {
+  const bar = $('airBar');
+  const txt = $('airText');
+  if (!bar) return;
+  const j = airInfo;
+  const dur = (j && Number(j.dur)) || 0;
+  const left = j ? (Number(j.startedAt) || 0) + dur * 1000 - Date.now() : -1;
+  const live = !!j && left > -8000;   // 这首还没放完（含换歌间隙）
+  bar.hidden = !live || following;
+  if (live && txt) txt.textContent = '正在开播《' + String(j.title || '') + '》';
+}
+
+function onAir(body) {
+  if (!body || typeof body !== 'object' || !body.url) return;
+  const prev = airInfo;
+  airInfo = body;
+  renderAirBar();
+  if (!following) return;
+  const changed = !prev || prev.id !== body.id || prev.url !== body.url;
+  // 暂停中收到换歌：不自动出声（用户按过暂停），恢复时会取最新这条重新对齐
+  if (changed && shouldPlay) playAirNow();
+}
+
+/* 加入云开播：按 startedAt 对齐进度，让所有人听到同一个位置 */
+async function playAirNow() {
+  const j = airInfo;
+  if (!j || !j.url) return;
+  const el = Date.now() - (Number(j.startedAt) || 0);
+  const dur = Number(j.dur) || 0;
+  if (el < -500) { setTimeout(() => { if (following) playAirNow(); }, -el + 120); return; }
+  if (dur && el > dur * 1000 + 8000) { setStatus('', '等下一首开播…'); return; }
+  following = true;
+  playingAirId = j.id;
+  renderAirBar();
+  setStatus('loading', '接入云开播…');
+  enterVod({ url: j.url, title: j.title, from: j.from || '', ann: j.ann || '', dur: dur });
+  await play();
+  const target = Math.max(0, el / 1000);
+  const seek = () => {
+    // 期间换歌/退出了就作废：新一首有自己的 startedAt
+    if (!isVod() || !airInfo || airInfo.id !== playingAirId) return;
+    try {
+      if (isFinite(audio.duration) && target < audio.duration - 1) audio.currentTime = target;
+    } catch (_) { /* 忽略 */ }
+  };
+  if (isFinite(audio.duration)) seek();
+  else audio.addEventListener('loadedmetadata', seek, { once: true });
+}
+
+function startAir() {
+  if (!airInfo) {
+    setStatus('', '云端待机 · 点一首歌就开始');
+    toast('云端还没开播，点一首歌马上就有');
+    const dj = $('djBubble');
+    if (dj) dj.click();
+    return;
+  }
+  playAirNow();
+}
+
+function rejoinAir() {
+  // 暂停期间可能已经换歌 → 总是从最新 airInfo 重新对齐
+  playAirNow();
+}
+
 function togglePlay() {
   /* 以「播放意图」为准，不看 audio.paused：切台/缓冲瞬间 audio 是 paused 的，
    * 旧写法这会儿再点反而又触发一次 play()，用户按不住、也取消不掉切换。 */
-  if (shouldPlay) pause();
-  else play();
+  if (shouldPlay) { pause(); return; }
+  if (following) { rejoinAir(); return; }
+  if (vod) { play(); return; }   // 之前点播暂停的，继续这首
+  startAir();
 }
 
 async function selectStation(i, autoplay) {
@@ -1406,6 +1484,7 @@ function enterVod(info) {
     url: String(info.url || ''),
     title: String(info.title || '点播曲目').trim().slice(0, 60),
     from: String(info.from || '').trim().slice(0, 30),
+    ann: String(info.ann || '').trim().slice(0, 80),
     dur: Number(info.dur) > 0 ? Number(info.dur) : 0,
   };
   disarmStallWatchdog();
@@ -1414,6 +1493,12 @@ function enterVod(info) {
   nowTitle = vod.title;
   const nt = $('nowTitle');
   if (nt) nt.textContent = '♪ ' + vod.title;
+  // 大标题 = 歌名，副标题 = 点播信息（与云端播报词同源）
+  if (stationNameEl) stationNameEl.textContent = vod.title;
+  if (stationDescEl) {
+    stationDescEl.textContent = vod.ann || (vod.from ? vod.from + ' 点的歌' : '云端点播');
+  }
+  document.title = vod.title;
   if (window.AndroidIcy) {
     try { window.AndroidIcy.stop(); } catch (_) { /* 忽略 */ }
   }
@@ -1436,6 +1521,10 @@ async function playVod(info) {
     toast('这首还没有可播的音源，先让 DJ 找找');
     return;
   }
+  // 手动点播 = 单曲模式：退出跟播，云开播换歌不会把它切走
+  following = false;
+  playingAirId = '';
+  renderAirBar();
   enterVod(info);
   await play();
 }
@@ -1550,10 +1639,11 @@ function updateMediaSession() {
       album: nowTitle ? '拾光电台 FM89.1 · ' + s.name : '拾光电台 FM89.1',
       artwork: artwork,
     });
-    navigator.mediaSession.setActionHandler('play', () => play());
+    navigator.mediaSession.setActionHandler('play', () => { if (!shouldPlay) togglePlay(); });
     navigator.mediaSession.setActionHandler('pause', () => pause());
-    navigator.mediaSession.setActionHandler('previoustrack', () => step(-1));
-    navigator.mediaSession.setActionHandler('nexttrack', () => step(1));
+    // 上一首/下一首随电台台单一并移除：云开播不支持手动切歌
+    navigator.mediaSession.setActionHandler('previoustrack', null);
+    navigator.mediaSession.setActionHandler('nexttrack', null);
   } catch (_) {
     /* 部分浏览器不支持某个 action，忽略 */
   }
@@ -1574,14 +1664,20 @@ window.__onIcyTitle = function (title) {
 };
 
 /* 锁屏通知的播放/暂停按钮 → 原生 MediaSession 回调进入这里 */
-window.__svcResume = function () { play(); };
+window.__svcResume = function () { if (!shouldPlay) togglePlay(); };
 window.__svcPause = function () { pause(); };
 
 /* ---------------- 事件绑定 ---------------- */
 playBtn.addEventListener('click', togglePlay);
-$('prevBtn').addEventListener('click', () => step(-1));
-$('nextBtn').addEventListener('click', () => step(1));
 wireVodSeek();
+// 云同步开播条：点一下加入此刻的开播（全网同一时刻听同一段，像真电台）
+const airBarEl = $('airBar');
+if (airBarEl) {
+  airBarEl.addEventListener('click', () => {
+    following = true;
+    playAirNow();
+  });
+}
 
 volumeEl.addEventListener('input', () => {
   audio.volume = Number(volumeEl.value);
@@ -1743,6 +1839,12 @@ function renderPill() {
 }
 
 async function refreshAudience() {
+  /* 电台台单已下架：不再拉取蜻蜓官方频道人数 —— 在线徽章交给
+   * presence 数据源（本机感知的真实听友数）。下面的旧逻辑原样留档。 */
+  officialState = 'fail';
+  officialCount = null;
+  renderPill();
+  return;
   const st = current();
   const cid = st ? qtChannelId(st.url) : '';
   if (!cid) { officialState = 'fail'; officialCount = null; renderPill(); return; }
@@ -1805,12 +1907,13 @@ if (cat !== 'all' && visibleIdx().indexOf(index) < 0) {
   cat = 'all';
   safeSet('fm891.cat', cat);
 }
-renderCats();
-renderStations();
-updateNowPlaying();
-setStatus('', '点击播放开始收听');
+renderCats();          // 台单已下架：元素不存在时直接返回
+renderStations();      // 同上，保留调用不报错
+updateNowPlaying();    // 待机文案：拾光点播台
+setStatus('', '点一首歌，云端主播放给你听');
 updatePlayUI();
-onStationChanged();   // 启动即拉取当前台的官方在线人数
+// 不再拉取蜻蜓官方频道人数（onStationChanged 已随台单停用）
+setInterval(renderAirBar, 4000);   // 换歌间隙/停播时开播条要跟着消失或恢复
 
 /* ---------------- Service Worker（网页版自动热更新） ---------------- */
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
@@ -1871,7 +1974,7 @@ function currentVersion() {
       if (v) return v;
     }
   } catch (_) { /* 忽略 */ }
-  return '1.17'; // 网页版：与 manifest versionName 同步维护
+  return '1.18'; // 网页版：与 manifest versionName 同步维护
 }
 
 let updateUrl = '';
@@ -2067,7 +2170,7 @@ wireUpdate();
           if (now - peers[k] <= STALE) n++;
         });
         countEl.textContent = String(n);
-        if (officialState === 'fail') pill.title = '官方数据暂不可用，当前为本机在线感知';
+        if (officialState === 'fail') pill.title = '在线听友数（本机实时感知）';
       } else if (state === 'connecting') {
         countEl.textContent = '…';
       } else {
@@ -2221,4 +2324,9 @@ window.__radio = {
   playVod: (info) => playVod(info),
   exitVod: () => exitVod(),
   isVod: () => isVod(),
+  /* 云同步开播：request.js 校验过 schema 的 air 消息转进来，app 决定
+   * 是否自动跟播/露出「一起听」条 */
+  onAir: (body) => onAir(body),
+  airInfo: () => airInfo,
+  following: () => following,
 };
