@@ -28,7 +28,10 @@
         <span class="live-dot" id="liveDot" hidden>● 开播中</span>
       </div>
       <p class="slogan">拾起耳朵里的好时光 · MUSIC RADIO</p>
-      <div class="online-pill" id="onlinePill" hidden aria-live="polite">🎧 在线 <b id="onlineCount">–</b> 人<i class="src" id="onlineSrc" hidden>官方</i></div>
+      <div class="pill-row">
+        <div class="online-pill" id="onlinePill" hidden aria-live="polite">🎧 在线 <b id="onlineCount">–</b> 人<i class="src" id="onlineSrc" hidden>官方</i></div>
+        <div class="lib-pill" id="libPill" hidden>📚 曲库 <b id="libCount">–</b> 首</div>
+      </div>
     </header>
 
     <section class="player" aria-label="播放器">
@@ -43,8 +46,10 @@
         </div>
 
         <h1 id="stationName">拾光点播台</h1>
+        <p class="now-artist" id="nowArtist" hidden></p>
         <p class="desc" id="stationDesc">点一首歌，云端主播放给你听</p>
         <p class="now-title" id="nowTitle"></p>
+        <div class="song-meta" id="songMeta" hidden></div>
       </div>
 
       <section class="controls">
@@ -111,12 +116,21 @@
     <div class="dialog req-dialog" role="dialog" aria-modal="true" aria-labelledby="reqTitle">
       <h3 id="reqTitle">🎧 在线点歌</h3>
       <form class="req-form" id="reqForm" autocomplete="off">
-        <input id="reqInput" type="text" placeholder="输入歌名，主播全网找" maxlength="30" />
+        <!-- 输入联动联想：打「你的」下拉弹《你的选择》，曲库速点一键填 -->
+        <div class="ac-wrap">
+          <input id="reqInput" type="text" placeholder="输入歌名，主播全网找（边打边联想）" maxlength="30" />
+          <ul class="ac-list" id="reqAc" hidden></ul>
+        </div>
+        <div class="req-chips" id="reqChips" hidden></div>
         <input id="reqTo" type="text" placeholder="送给谁（选填）" maxlength="16" />
-        <textarea id="reqMsg" rows="2" maxlength="60"
-                  placeholder="祝福语 / 内心独白（选填，AI 会朗读播报）"></textarea>
+        <div class="msg-row">
+          <textarea id="reqMsg" rows="2" maxlength="60"
+                    placeholder="祝福语 / 内心独白（选填，AI 会朗读播报）"></textarea>
+          <button class="ghost bless-btn" id="reqBless" type="button">✨ AI 写祝福</button>
+        </div>
         <button class="primary" id="reqGo" type="submit">点歌</button>
       </form>
+      <p class="req-sum" id="reqSum" hidden></p>
       <p class="req-hint" id="reqHint"></p>
       <ul class="req-list" id="reqList"></ul>
       <div class="req-nick">

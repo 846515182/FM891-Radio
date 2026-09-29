@@ -999,3 +999,179 @@ footer {
 @media (max-width: 360px) {
   .req-st { font-size: 10px; padding: 3px 7px; }
 }
+
+/* ================= 拾光电台 v1.19 · 界面重做 ================= */
+
+/* —— 头部统计（在线 + 曲库）—— */
+.pill-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.pill-row .online-pill { margin-top: 0; }
+.lib-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #fde68a;
+  background: rgba(250, 204, 21, 0.1);
+  border: 1px solid rgba(250, 204, 21, 0.28);
+  padding: 5px 11px;
+  border-radius: 999px;
+}
+.lib-pill[hidden] { display: none; }
+.lib-pill b { font-weight: 800; color: #fef3c7; }
+
+/* —— 正在播信息区：歌手行 + 播报字幕卡 + 信息 chips —— */
+.stage .now-artist {
+  margin: 2px 0 0;
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: #c4b5fd;
+}
+.stage .now-artist[hidden] { display: none; }
+.stage .desc {
+  margin: 10px auto 0;
+  max-width: 34em;
+  padding: 9px 14px;
+  font-size: 12.5px;
+  line-height: 1.75;
+  color: #cec4ef;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-left: 3px solid transparent;
+  border-image: linear-gradient(180deg, #f0abfc, #8b5cf6) 1;
+  border-radius: 4px 14px 14px 4px;
+}
+.song-meta {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.song-meta[hidden] { display: none; }
+.meta-chip {
+  font-size: 11px;
+  font-weight: 700;
+  color: #e9e3ff;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 4px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+/* —— 点歌台：联想下拉 —— */
+.ac-wrap { position: relative; }
+.ac-list {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 6;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  max-height: 190px;
+  overflow-y: auto;
+  background: #161031;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.5);
+}
+.ac-list[hidden] { display: none; }
+.ac-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.ac-item:active { background: rgba(139, 92, 246, 0.3); }
+.ac-item em { font-style: normal; font-size: 13px; font-weight: 700; color: #f3eeff; }
+.ac-artist { flex: none; font-size: 11px; color: var(--muted); }
+
+/* —— 点歌台：曲库速点 chips（覆盖表单按钮的通栏样式）—— */
+.req-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.req-chips[hidden] { display: none; }
+.req-form .chip,
+.chip {
+  width: auto !important;
+  margin: 0 !important;
+  padding: 5px 11px !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  color: #ddd3ff !important;
+  background: rgba(139, 92, 246, 0.16) !important;
+  border: 1px solid rgba(167, 139, 250, 0.4) !important;
+  border-radius: 999px !important;
+  transform: none !important;
+}
+.chip:active { background: rgba(139, 92, 246, 0.4) !important; }
+
+/* —— 点歌台：祝福语 + AI 按钮同行 —— */
+.msg-row { display: flex; gap: 8px; align-items: stretch; }
+.msg-row textarea { flex: 1; min-width: 0; }
+.msg-row .bless-btn {
+  flex: none;
+  width: auto;
+  margin: 0;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  font-weight: 800;
+  color: #fbcfe8;
+  background: linear-gradient(135deg, rgba(236, 72, 152, 0.24), rgba(139, 92, 246, 0.24));
+  border: 1px solid rgba(244, 114, 182, 0.45);
+  border-radius: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.msg-row .bless-btn:active { transform: scale(0.96); }
+
+/* —— 点歌台：排队摘要（第几位轮到我）—— */
+.req-sum {
+  margin: 0 0 8px;
+  padding: 7px 11px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #fbcfe8;
+  background: rgba(236, 72, 152, 0.1);
+  border: 1px dashed rgba(244, 114, 182, 0.4);
+  border-radius: 10px;
+}
+.req-sum[hidden] { display: none; }
+
+/* —— 点歌台：自己点的歌高亮 —— */
+.req-item.mine {
+  border-color: rgba(244, 114, 182, 0.45);
+  background: linear-gradient(180deg, rgba(236, 72, 152, 0.1), rgba(255, 255, 255, 0.03));
+}
+.req-item.mine .req-no { color: #f9a8d4; opacity: 1; }
+
+/* —— 歌名大字：单行溢出优雅截断，播放时缓慢呼吸光晕 —— */
+.stage h1 {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+body.playing .stage h1 {
+  animation: titleGlow 4.5s ease-in-out infinite;
+}
+@keyframes titleGlow {
+  0%, 100% { text-shadow: 0 2px 22px rgba(139, 92, 246, 0.4); }
+  50% { text-shadow: 0 2px 30px rgba(240, 171, 252, 0.65); }
+}

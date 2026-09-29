@@ -27,9 +27,11 @@
   try {
     if (typeof mqtt === 'undefined') return;
     const R = window.__radio;
-    if (!R || typeof R.playVod !== 'function') return;
+    // v1.19 电台化：点即播（playVod）退场，点歌台只经 onAir 参与播放
+    if (!R || typeof R.onAir !== 'function') return;
 
-    const $ = (id) => document.getElementById(id);
+    // 关窗后异步链（自动开播/打字机）可能还在跑：document 没了要给 null，不许抛
+    const $ = (id) => (typeof document !== 'undefined' && document ? document.getElementById(id) : null);
 
     /* ---------------- 常量 ---------------- */
     const Q_NS = 'fm891-radio/q';
@@ -295,8 +297,8 @@
 
     /* ---------------- 歌已备好（阶段 2 的落点） ---------------- */
     /* worker 找到歌并下好音源后发一条 retain，这里挂到对应的点歌条目上。
-     * 挂上之后列表项就从「暂无电台在放」变成「可播放 · 一点就听」，
-     * 点它走 __radio.playVod() —— 队列、气泡、列表、昵称全部原样复用。 */
+     * 电台化之后（v1.19）它不再意味着「可以点了」，而是「已入库、等轮播」——
+     * 位次标签（第 N 位）照常展示，轮到就由云开播自动放。 */
     function onReady(msg) {
       if (!msg || typeof msg !== 'object') return false;
       const id = typeof msg.id === 'string' ? msg.id : '';
@@ -364,7 +366,7 @@
       if (sayQueue.length >= 2) return;
       if (now - lastReadySay < 4000) return;
       lastReadySay = now;
-      say('《' + it.title + '》备好了，点一下就听 🎵');
+      say('《' + it.title + '》备好了，马上轮到它 🎵');
     }
 
     /* ---------------- 云同步开播 ---------------- */
@@ -386,8 +388,13 @@
         ver: Number(j.ver) || 0,
         title: typeof j.title === 'string' ? j.title.slice(0, 60) : '',
         from: typeof j.from === 'string' ? j.from.slice(0, 16) : '',
-        ann: typeof j.ann === 'string' ? j.ann.slice(0, 80) : '',
+        to: typeof j.to === 'string' ? j.to.slice(0, 16) : '',
+        artist: typeof j.artist === 'string' ? j.artist.slice(0, 40) : '',
+        // 台词是「点播归属+歌曲背景」的分层长句，80 字会截掉后半句
+        ann: typeof j.ann === 'string' ? j.ann.slice(0, 240) : '',
       };
+      ensureCatalog();   // 音源地址到位 → 顺手拉曲库（联想/AI 祝福/速点要用）
+      render();          // 「正在播」标签跟着换条目
       if (typeof R.onAir === 'function') {
         try { R.onAir(airState); } catch (_) { /* app 挂了不拖累点歌台 */ }
       }
@@ -497,11 +504,12 @@
     const reqList = $('reqList');
     const reqHint = $('reqHint');
 
-    function stLabel(it, ve) {
-      // 有直供音源就按音源说：哪怕进度还挂着，歌其实已经能播了
-      if (ve) return it.st === 'playing'
-        ? { text: '正在播', cls: 'st-play' }
-        : { text: '可播放 · 一点就听', cls: 'st-ready' };
+    function stLabel(it, i) {
+      // 云开播正放到这条 → 正在播（air 的 id 就是点播条目的 id）
+      if (airState && airState.id === it.id) return { text: '正在播', cls: 'st-play' };
+      // 音源已入库 → 电台按队列轮播，位次就是「什么时候轮到你」；
+      // 它优先于一切「找歌中/没找到」的旧状态（歌都备好了还喊没找到=撒谎）
+      if (vodFor(it)) return { text: '第 ' + (i + 1) + ' 位', cls: 'st-wait' };
       // 云端进度（找歌/下载/转码/合成）比本地任何结论都新
       const p = freshProg(it.id);
       if (p && (it.st === 'searching' || it.st === 'miss')) return progLabel(p);
@@ -512,12 +520,9 @@
       }
       switch (it.st) {
         case 'searching': return { text: '云端找歌中…', cls: 'st-search' };
-        // 旧客户端遗留的 ready/playing：没有音源（ve 为空）就不算数，
-        // 免得标签喊「可播放」而条目根本点不动
-        case 'ready':
-        case 'playing': return { text: '排队中', cls: 'st-wait' };
         case 'miss': return { text: '暂时没找到', cls: 'st-miss' };
-        default: return { text: '排队中', cls: 'st-wait' };
+        // 电台化：没有「点一下立刻播」了，条目就是队列 —— 第几位 ≈ 什么时候轮到
+        default: return { text: '第 ' + (i + 1) + ' 位', cls: 'st-wait' };
       }
     }
 
@@ -530,12 +535,10 @@
       list.forEach((it, i) => {
         const li = document.createElement('li');
         li.className = 'req-item';
-        const ve = vodFor(it);
-        const lab = stLabel(it, ve);
-        // 可点只有一条路：**有直供音源**（云端出片了，点一下播单曲）。
-        // 电台台单已下架，gi/stn 只作为旧快照的兼容字段留存，不再参与交互。
-        const canPlay = !!ve;
-        if (canPlay) li.classList.add('can-play');
+        if (it.cid && it.cid === myId) li.classList.add('mine');   // 自己点的标出来
+        const lab = stLabel(it, i);
+        /* 电台化：条目是队列，不再「点一下立刻播」—— 排进去就等电台轮到，
+         * 位次标签（第 N 位）+ 摘要就是大家关心的「什么时候轮到我」。 */
         const num = document.createElement('b');
         num.className = 'req-no';
         num.textContent = '#' + (i + 1);
@@ -561,27 +564,11 @@
         li.appendChild(num);
         li.appendChild(body);
         li.appendChild(st);
-        if (canPlay) {
-          li.addEventListener('click', () => {
-            if (typeof R.playVod === 'function') {
-              R.playVod({
-                url: ve.url, title: it.title, from: it.who,
-                ann: ve.ann || (it.who + '点播《' + it.title + '》' +
-                  (it.to ? '，送给' + it.to : '')),
-                dur: ve.dur,
-              });
-              say('给你放《' + it.title + '》' + (it.to ? '，送给 ' + it.to : '') + ' 🎵');
-              return;
-            }
-            // 有音源但这一版 app 还没有 playVod（缓存里的旧 app.js）：
-            // 明说，别让用户点了没反应以为坏了
-            R.toast('播放能力还没更新到，先检查一下更新');
-          });
-        }
         frag.appendChild(li);
       });
       reqList.innerHTML = '';
       reqList.appendChild(frag);
+      renderSum(list);
 
       if (reqHint) {
         if (!list.length) {
@@ -594,6 +581,22 @@
           reqHint.textContent = '未连上点歌台，当前仅本机生效 · ' + list.length + ' 首在队';
         }
       }
+    }
+
+    /* 排队摘要：全网几首 + 你的歌第几位（点歌人最想知道「什么时候轮到我」） */
+    function renderSum(list) {
+      const sum = $('reqSum');
+      if (!sum) return;
+      if (!list || !list.length) { sum.hidden = true; return; }
+      let mineIdx = -1;
+      for (let k = 0; k < list.length; k++) {
+        if (list[k].cid === myId && !list[k].del) { mineIdx = k; break; }
+      }
+      sum.hidden = false;
+      sum.textContent = mineIdx >= 0
+        ? ('全网 ' + list.length + ' 首在队 · 你的歌第 ' + (mineIdx + 1) + ' 位' +
+           (mineIdx === 0 ? '，马上开播' : ''))
+        : ('全网 ' + list.length + ' 首在队 · 点一首排进去，DJ 会安排');
     }
 
     /* ---------------- 身份 ---------------- */
@@ -644,6 +647,7 @@
     const reqInput = $('reqInput');
     const reqTo = $('reqTo');       // 送给谁（选填，会进播报词）
     const reqMsg = $('reqMsg');     // 祝福语（选填，云端 AI 朗读拼在歌前面）
+    const reqBless = $('reqBless'); // AI 帮写祝福（按歌名从词本挑）
     const reqClose = $('reqClose');
     const nickInput = $('nickInput');
     let nickTimer = null;
@@ -651,7 +655,9 @@
     function open() {
       if (!reqMask) return;
       reqMask.hidden = false;
+      ensureCatalog();   // 打开就绪曲库：联想 / 速点 / AI 祝福都靠它
       render();
+      renderChips();
       // 每次打开回填当前昵称：用户可能在别处改过，或本地被清过
       if (nickInput && !nickInput.value) { try { nickInput.value = myName(); } catch (_) { /* 忽略 */ } }
       setTimeout(() => { try { reqInput && reqInput.focus(); } catch (_) { /* 忽略 */ } }, 60);
@@ -693,6 +699,144 @@
       });
     }
 
+    /* ---------------- 曲库：联想 / 速点 / AI 祝福 ----------------
+     * 数据源 = 云端 /catalog.json（标题+歌手+时长+祝福词本）。
+     * 地址从 app 的音源 origin 推导；还没入台时静默等待，功能降级不报错。 */
+    let catalog = [];
+    let catTimer = null;
+    let lastOrigin = '';
+    const GENERIC_BLESS = [   // 曲库没连上时的兜底祝福（与服务端词本同款语气）
+      '愿你听到想听的歌，见到想见的人。',
+      '这首歌，替我说声谢谢你。',
+      '愿此刻的你，被音乐温柔以待。',
+      '点一首歌，存一份好心情。',
+      '愿你眼里有光，耳里有歌。',
+    ];
+
+    function catOrigin() {
+      // 先问 air 消息自己（onAirMsg 里 airState 已就位，比等 app 转发更早）
+      try {
+        if (airState && /^https?:\/\//i.test(airState.url || '')) {
+          return new URL(airState.url).origin;
+        }
+      } catch (_) { /* 忽略 */ }
+      try { if (R.origin) return R.origin(); } catch (_) { /* 忽略 */ }
+      return '';
+    }
+
+    function ensureCatalog() {
+      const base = catOrigin();
+      if (!base) return;
+      if (catalog.length && base === lastOrigin) return;
+      if (catTimer) return;            // 4 秒防抖，避免连打请求
+      lastOrigin = base;
+      catTimer = setTimeout(() => { catTimer = null; }, 4000);
+      /* 老内核 / 测试环境可能没有 fetch：曲库是锦上添花，绝不许拖垮点歌台 */
+      if (typeof fetch !== 'function') return;
+      fetch(base + '/catalog.json', { cache: 'no-store' })
+        .then((r) => (r && r.ok ? r.json() : null))
+        .then((c) => {
+          if (!Array.isArray(c)) return;
+          catalog = c.filter((x) => x && typeof x.title === 'string' && x.title);
+          const lc = $('libCount');
+          if (lc) lc.textContent = String(catalog.length);
+          const lp = $('libPill');
+          if (lp && catalog.length) lp.hidden = false;
+          renderChips();
+        })
+        .catch(() => { /* 拉不到曲库：联想/速点降级，点歌本身不受影响 */ });
+    }
+
+    /* 曲库速点 chips：打开点歌台一眼看到库里有什么，点一下直接填 */
+    function renderChips() {
+      const box = $('reqChips');
+      if (!box) return;
+      box.innerHTML = '';
+      if (!catalog.length) { box.hidden = true; return; }
+      catalog.slice(0, 8).forEach((c) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'chip';
+        b.textContent = c.title;
+        b.addEventListener('click', () => {
+          if (reqInput) { reqInput.value = c.title; reqInput.focus(); }
+          hideAc();
+        });
+        box.appendChild(b);
+      });
+      box.hidden = false;
+    }
+
+    /* 输入联动联想：打「你的」下拉弹《你的选择》 */
+    function hideAc() {
+      const ac = $('reqAc');
+      if (ac) { ac.hidden = true; ac.innerHTML = ''; }
+    }
+    function showAc() {
+      const ac = $('reqAc');
+      if (!ac || !reqInput) return;
+      const q = String(reqInput.value || '').trim();
+      ac.innerHTML = '';
+      if (!q || !catalog.length) { ac.hidden = true; return; }
+      const hits = [];
+      for (let k = 0; k < catalog.length && hits.length < 6; k++) {
+        const c = catalog[k];
+        if (c.title !== q && c.title.indexOf(q) >= 0) hits.push(c);
+      }
+      if (!hits.length) { ac.hidden = true; return; }
+      hits.forEach((c) => {
+        const li = document.createElement('li');
+        li.className = 'ac-item';
+        const em = document.createElement('em');
+        em.textContent = c.title;
+        li.appendChild(em);
+        if (c.artist) {
+          const sp = document.createElement('span');
+          sp.className = 'ac-artist';
+          sp.textContent = c.artist;
+          li.appendChild(sp);
+        }
+        li.addEventListener('click', () => {
+          if (reqInput) { reqInput.value = c.title; reqInput.focus(); }
+          hideAc();
+        });
+        ac.appendChild(li);
+      });
+      ac.hidden = false;
+    }
+
+    /* AI 写祝福：按当前歌名从词本挑（贴这首歌的），没匹配就用通用祝福 */
+    function blessFor(title) {
+      const t = String(title || '').trim();
+      let arr = [];
+      if (t) {
+        for (let k = 0; k < catalog.length; k++) {
+          if (catalog[k].title === t) { arr = catalog[k].bless || []; break; }
+        }
+      }
+      if (!arr.length) arr = GENERIC_BLESS;
+      return arr[Math.floor(Math.random() * arr.length)];
+    }
+
+    // 联想：边打边出（120ms 防抖）；失焦 160ms 后收起（给点击留时间）
+    if (reqInput) {
+      let acTimer = null;
+      reqInput.addEventListener('input', () => {
+        ensureCatalog();
+        clearTimeout(acTimer);
+        acTimer = setTimeout(showAc, 120);
+      });
+      reqInput.addEventListener('blur', () => { setTimeout(hideAc, 160); });
+    }
+    if (reqBless) {
+      reqBless.addEventListener('click', () => {
+        ensureCatalog();
+        const v = blessFor(reqInput ? reqInput.value : '');
+        if (reqMsg) reqMsg.value = v;
+        R.toast('祝福语写好了，可以直接用或改改 ✨');
+      });
+    }
+
     /* ---------------- 启动 ---------------- */
     render();
     connect();
@@ -719,6 +863,9 @@
       air: () => airState, onAirMsg: onAirMsg,
       /* 播报闸门要看队列长度才能验（第一条会被立刻取走开始打字，长度变 0） */
       sayQueueLen: () => sayQueue.length,
+      /* 曲库链路：联想/AI 祝福/速点的数据与行为 */
+      catalog: () => catalog, ensureCatalog: ensureCatalog, blessFor: blessFor,
+      showAc: showAc, hideAc: hideAc,
       /* 是否真的连上点歌台：mock 测试验不出来 retain 回放/遗嘱这些 broker 行为， */
       /* 真实 broker E2E 要靠它判断「可以开始断言了」，不靠猜时间。 */
       isSynced: () => synced,
