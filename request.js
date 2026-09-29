@@ -52,6 +52,15 @@
     const READY_NS = 'fm891-radio/r';
     const MAX_READY = 40;        // 备好的音源条数上限，和队列同量级
     const READY_FRESH = 10 * 60000;  // 超过 10 分钟的不再播报（重连回放会成堆）
+    /* 阶段 2 的实时进度：worker 把「找歌 / 下载 / 转码」写进这个频道。
+     * 没有它的时候，点歌到出声之间 5~8 分钟里条目只能显示「主播找歌中…」，
+     * 而且阶段 1 的 2.5 分钟硬截止会先把它判成「暂无电台在放」，气泡还念
+     * 一句「全网电台这会儿都没在放」—— 用户眼看着 App 说没戏，其实歌正
+     * 下到一半。这就是那次「乱七八糟」的来处。 */
+    const PROG_NS = 'fm891-radio/p';
+    const PROG_FRESH = 6 * 60000;   // 进度 6 分钟没更新就不采信（worker 挂了/转码极慢）
+    const MAX_PROG = 60;
+    const prog = new Map();         // id -> {stage, done, total, eta, ts}
     /* 扫描节流参数单独成表，并从 __req 暴露出去：测试要把 deadline 压到几十
      * 毫秒才能验证「硬截止真的会停」。光读源码断言等于赌它没被改坏。 */
     const TUNING = {
@@ -301,7 +310,8 @@
         }
         if (best) { hit(item, best); return; }
         if (i >= nextReport) {
-          say('还在找《' + item.title + '》…已扫 ' + i + ' 个台');
+          // 有 worker 进度时这句就是噪音：列表里已经写着「下载中 24/49 MB」
+          if (!freshProg(item.id)) say('还在找《' + item.title + '》…已扫 ' + i + ' 个台');
           nextReport += 100;
         }
         // 轮次之间喘口气：公共接口不该被当成压测目标
@@ -339,7 +349,63 @@
       item.ver += 1;
       publish();
       render();
+      // worker 正下着这首歌时，阶段 1 的「没台在放」是**过时结论** ——
+      // 这句话一播出去用户就以为没戏了，而歌其实两分钟后就绪。
+      if (freshProg(item.id)) return;
       say('全网电台这会儿都没在放《' + item.title + '》，先记进点歌池了');
+    }
+
+    /* ---------------- 阶段 2 的实时进度 ---------------- */
+    /* worker 在找歌/下载/转码三个阶段各发一条 retain；空载荷表示出结果了。 */
+    function onProg(msg) {
+      if (!msg || typeof msg !== 'object') return false;
+      const id = typeof msg.id === 'string' ? msg.id : '';
+      if (!id) return false;
+      if (!msg.stage) { prog.delete(id); return true; }
+      const stages = ['search', 'download', 'transcode'];
+      prog.set(id, {
+        stage: stages.indexOf(msg.stage) >= 0 ? msg.stage : 'search',
+        done: Math.max(0, Number(msg.done) || 0),
+        total: Math.max(0, Number(msg.total) || 0),
+        eta: Math.max(0, Number(msg.eta) || 0),
+        ts: Number(msg.ts) || Date.now(),
+      });
+      if (prog.size > MAX_PROG) {
+        const arr = [];
+        prog.forEach((v, k) => arr.push([k, v]));
+        arr.sort((a, b) => a[1].ts - b[1].ts);
+        for (let i = 0; i < arr.length - MAX_PROG; i++) prog.delete(arr[i][0]);
+      }
+      return true;
+    }
+
+    /* 陈旧 retain 不许再自称「下载中」：worker 中途挂掉后那条进度会一直留着，
+     * 没有这道闸，用户会对着一条死掉的进度条等到天荒地老。 */
+    function freshProg(id) {
+      const p = id ? prog.get(id) : null;
+      if (!p) return null;
+      if (Date.now() - p.ts > PROG_FRESH) { prog.delete(id); return null; }
+      return p;
+    }
+
+    /* worker 出结果了（发布 ready / 放弃 / 转码失败 / 异常）—— 撤掉进度。
+     * 返回是否真的删了东西，让调用方决定要不要重渲染。 */
+    function clearProg(id) {
+      if (!id || !prog.has(id)) return false;
+      prog.delete(id);
+      return true;
+    }
+
+    function progLabel(p) {
+      if (p.stage === 'transcode') return { text: '转码中… 马上就好', cls: 'st-search' };
+      if (p.stage !== 'download' || !p.total) return { text: '全网找歌中…', cls: 'st-search' };
+      const mb = 1048576;
+      const done = Math.min(Math.round(p.done / mb), Math.round(p.total / mb));
+      let t = '下载中 ' + done + '/' + Math.round(p.total / mb) + ' MB';
+      if (p.eta > 0 && p.eta < 3600) {
+        t += ' · 约 ' + (p.eta < 60 ? p.eta + ' 秒' : Math.ceil(p.eta / 60) + ' 分钟');
+      }
+      return { text: t, cls: 'st-search' };
     }
 
     /* ---------------- 歌已备好（阶段 2 的落点） ---------------- */
@@ -462,14 +528,27 @@
         synced = true;
         try { c.subscribe(Q_NS + '/#', { qos: 0 }); } catch (_) { /* 忽略 */ }
         try { c.subscribe(READY_NS + '/#', { qos: 0 }); } catch (_) { /* 忽略 */ }
+        try { c.subscribe(PROG_NS + '/#', { qos: 0 }); } catch (_) { /* 忽略 */ }
         publish(true);
         render();
         say('点歌台已上线，全网听友的点歌会同步到这里');
       });
       c.on('message', (topic, payload) => {
         if (client !== me || topic === myTopic) return;
+        const raw = payload ? payload.toString() : '';
+        /* 进度频道单独走，且必须排在下面那条通用规则**前面**：
+         * worker 出结果时会发一条空载荷来清进度（clear_prog），而通用规则
+         * 把空载荷当成「对端下线」直接 return —— 排在后面的话清理永远到不了，
+         * 用户会对一条死掉的「下载中」看到底。id 从 topic 尾段取，不靠载荷。 */
+        if (topic.indexOf(PROG_NS + '/') === 0) {
+          if (!raw) { if (clearProg(topic.slice(PROG_NS.length + 1))) render(); return; }
+          let g = null;
+          try { g = JSON.parse(raw); } catch (_) { return; }   // 脏载荷直接丢，不清进度
+          if (onProg(g)) render();
+          return;
+        }
         let j = null;
-        try { j = JSON.parse(payload ? payload.toString() : ''); } catch (_) { return; }
+        try { j = JSON.parse(raw); } catch (_) { return; }
         // 空载荷 = 对端下线（LWT）。它的条目早已被我们合并进本地，不会丢。
         if (!j) { return; }
         if (Array.isArray(j)) {
@@ -506,6 +585,12 @@
       if (ve) return it.st === 'playing'
         ? { text: '正在播', cls: 'st-play' }
         : { text: '可播放 · 一点就听', cls: 'st-ready' };
+      // 阶段 2 的实时进度比阶段 1 的任何结论都新：扫台 2.5 分钟判 miss、
+      // 判超时的那会儿，worker 往往正下到一半。只在阶段 1 还没听出结果时
+      // （searching/miss）才以进度为准 —— 扫到台了就该按台说，不能拿
+      // 「下载中」去盖住一个此刻就能点开听的台。
+      const p = freshProg(it.id);
+      if (p && (it.st === 'searching' || it.st === 'miss')) return progLabel(p);
       // 卡死检测：发起者可能已经下线，searching 超时就别一直装作在找
       if (it.st === 'searching' && it.scanAt && Date.now() - it.scanAt > TUNING.deadline) {
         return { text: '找歌超时', cls: 'st-miss' };
@@ -700,6 +785,9 @@
       myName: myName, setNick: setNick, tuning: TUNING,
       /* 「歌已备好」这条链路：阶段 1 没有 worker 发它，测试要能直接喂消息 */
       ready: ready, onReady: onReady, vodFor: vodFor, findItem: findItem,
+      /* 阶段 2 的实时进度：和 ready 一样要能被测试直接喂消息 */
+      prog: prog, onProg: onProg, freshProg: freshProg, progLabel: progLabel,
+      clearProg: clearProg,
       /* 播报闸门要看队列长度才能验（第一条会被立刻取走开始打字，长度变 0） */
       sayQueueLen: () => sayQueue.length,
       /* 是否真的连上点歌台：mock 测试验不出来 retain 回放/遗嘱这些 broker 行为， */
