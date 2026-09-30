@@ -1322,9 +1322,12 @@ async function play() {
       shouldPlay = false;
       abortReissue = 0;
       // 让出跟播位：条子重新露出当「一起听」把手（配合 [hidden] 修复，
-      // 它真能藏也能现），下一条 air 还会自动重试加入
+      // 它真能藏也能现），下一条 air 还会自动重试加入。
+      // 必须连单曲态一起退 —— 否则 following=false && isVod()=true，
+      // onAir 的自动加入分支被 !isVod() 挡住，下一条照样不接（自断后路）
       following = false;
       playingAirId = '';
+      exitVod();
       renderAirBar();
       updatePlayUI();
       setStatus('', '点击播放开始收听');
@@ -1390,8 +1393,11 @@ function onAir(body) {
   if (!following && !userPaused && !isVod()) { playAirNow(); return; }
   if (!following) return;
   const changed = !prev || prev.id !== body.id || prev.url !== body.url;
-  // 暂停中收到换歌：不自动出声（用户按过暂停），恢复时会取最新这条重新对齐
-  if (changed && shouldPlay) playAirNow();
+  /* 换歌自动接棒，唯一豁免是「用户主动暂停过」：
+   *  - shouldPlay=true 正常接；
+   *  - shouldPlay=false 但没被暂停过（播完空窗、播放失败）→ 换了歌
+   *    就是新地址，值得自动重试，别让用户手动救。 */
+  if (changed && !userPaused) playAirNow();
 }
 
 /* 加入云开播：按 startedAt 对齐进度，让所有人听到同一个位置 */
@@ -1836,6 +1842,23 @@ audio.addEventListener('loadedmetadata', () => { if (isVod()) renderVodProgress(
 
 audio.addEventListener('ended', () => {
   if (!isVod()) return;
+
+  /* 跟播（云开播成片）播完 = 等导播切下一首：服务器按 start+dur+2 秒
+   * 必发新 air，onAir 的 changed && !userPaused 分支会自动接棒。
+   * 保住 shouldPlay 是命门 —— 旧版在这里一刀切 false，换歌指令到了
+   * 也因为「接棒要 shouldPlay」而永不接，表现就是真机踩过的
+   * 「播完就停，别人点的歌全要手动播」。 */
+  if (following) {
+    retries = 0;
+    clearTimeout(retryTimer);
+    retryTimer = null;
+    disarmStallWatchdog();
+    setStatus('loading', '马上切下一首…');
+    updatePlayUI();
+    return;
+  }
+
+  // 手动单曲：维持「播完了」语义。
   // 不清 vod：还留在单曲模式，按播放键可以从头再放一遍。
   // 必须把 shouldPlay 置 false —— 否则按钮仍是"暂停"态，再点一下
   // togglePlay 会走成 pause()，用户点了播放反而停下来。
@@ -2039,7 +2062,7 @@ function currentVersion() {
       if (v) return v;
     }
   } catch (_) { /* 忽略 */ }
-  return '1.19.1'; // 网页版：与 manifest versionName 同步维护
+  return '1.19.2'; // 网页版：与 manifest versionName 同步维护
 }
 
 let updateUrl = '';
