@@ -1300,6 +1300,16 @@ function liveUrl() {
   return streamAttemptTunnel ? streamTunnel : (streamPrimary || STREAM_DIRECT);
 }
 
+/* 拉起原生前台媒体服务：锁屏卡片、系统播放器、熄屏续播（省电锁）全挂在它上面。
+ * **不**用 start 桥方法 —— 那个入口会顺带开一路 ICY 读取器，把整条流读完直接
+ * 丢掉（流是 ffmpeg 直出的裸 MP3，根本没有元数据可读），白耗一倍带宽。
+ * media() 是 v1.20.1 给桥加的窄入口：只起服务 + 电源锁。 */
+function startMediaCard() {
+  if (window.AndroidIcy && typeof window.AndroidIcy.media === 'function') {
+    try { window.AndroidIcy.media(); } catch (_) { /* 忽略 */ }
+  }
+}
+
 async function play() {
   const token = ++playToken;   // 本次播放的代际；期间被新的 play/pause/切台 取代即作废
   shouldPlay = true;
@@ -1318,7 +1328,11 @@ async function play() {
     if (token !== playToken) return;
     abortReissue = 0;          // 已成功出声，良性中断补发计数归零
     /* 流里没有 ICY 单曲元数据（服务端 ffmpeg 直出裸 MP3），曲目标题一律由
-     * air 消息给 —— 再开一路 ICY 只是白耗连接和带宽，故不再启动。 */
+     * air 消息给 —— 再开一路 ICY 只是白耗连接和带宽，故不再启动。
+     * 但锁屏卡片 / 系统播放器 / 熄屏续播（省电锁）全挂在前台媒体服务上，
+     * 必须在**出声这一刻**把它拉起 —— v1.20 漏了这步，安卓播放时系统播放器
+     * 和锁屏什么都不显示（v1.20.1 补回）。 */
+    startMediaCard();
   } catch (err) {
     // ⓪ 已被新的播放/暂停/切台请求顶掉 —— 静默退出，绝不改状态（旧版在这儿
     //    把 shouldPlay 置 false，导致切台时新台被自己掐断 = 断流）
@@ -1556,6 +1570,10 @@ function renderNowPlaying(j) {
   renderSongMeta();
   if (window.AndroidIcy) {
     try { window.AndroidIcy.station('拾光电台 FM89.1'); } catch (_) { /* 忽略 */ }
+    /* 锁屏 / 系统播放器上的「歌名」也从这走：流里没有 ICY 元数据，原生读取器
+     * 给不了标题，air 消息是唯一数据源 —— 每次换歌必须同步推给前台媒体服务，
+     * 否则锁屏卡片永远停在开播时那一首。 */
+    try { window.AndroidIcy.title(title || ''); } catch (_) { /* 忽略 */ }
   }
   updateMediaSession();
 }
@@ -1575,6 +1593,11 @@ function enterVod(info) {
   disarmStallWatchdog();
   const row = $('vodRow');
   if (row) row.hidden = false;
+  /* 进单曲先把原生那一路停干净：锁屏卡片不能继续挂着**旧的直播**歌名
+   * （「进单曲后原生已停」是回归套件守着的行为）。v1.20 的 ICY 读取器本就
+   * 不启动，这句 stop() 实际停掉的是旧台遗留状态 + 电源锁；卡片紧接着由
+   * play() 出声后的 startMediaCard() 原样接回来 —— 单曲标题已在下面
+   * renderNowPlaying 里先一步推给前台服务，重启后显示的正是新歌。 */
   if (window.AndroidIcy) {
     try { window.AndroidIcy.stop(); } catch (_) { /* 忽略 */ }
   }
@@ -2141,7 +2164,7 @@ function currentVersion() {
       if (v) return v;
     }
   } catch (_) { /* 忽略 */ }
-  return '1.20.0'; // 网页版：与 manifest versionName 同步维护
+  return '1.20.1'; // 网页版：与 manifest versionName 同步维护
 }
 
 let updateUrl = '';

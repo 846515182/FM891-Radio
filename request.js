@@ -100,7 +100,24 @@
      * 快照合并互相盖掉 —— 音源丢了就等于歌白点。 */
     const ready = new Map();
     let lastReadySay = 0;
+    /* 槽位序号必须**跨启动单调递增**（localStorage 持久化）。
+     * 服务器按「这个 id 是不是已经就绪」判断一单办完没有，而 id = cid+序号：
+     * 序号每次启动归零的话，重启后第一次点歌必然复用上一首用过的 `-1`，
+     * 那个 id 上挂着旧歌的就绪记录 —— 新请求会被当成「早办完了」静默丢弃，
+     * 界面永远停在「找歌中」（2026-09-30 真实故障：点了《小薇》一直没播）。
+     * 每次出号前**都重读一遍** localStorage：自家 q/<cid> 的回放是有意忽略的
+     * （重启不恢复条目、下线靠 LWT 清快照），这里就是恢复序号的唯一路径；
+     * 出号时重读还能顺带认下别的标签页刚写进去的更大的号。 */
     let mySeq = 0;
+
+    function nextSeq() {
+      let n = 0;
+      try { n = parseInt(localStorage.getItem('fm891-seq') || '0', 10) || 0; } catch (_) { n = 0; }
+      if (n > mySeq) mySeq = n;      // 跨会话 / 跨标签页：认更大的号，绝不回退
+      mySeq += 1;
+      try { localStorage.setItem('fm891-seq', String(mySeq)); } catch (_) { /* 忽略 */ }
+      return mySeq;
+    }
     let lastSnap = '';          // 上次发布内容的指纹，用于打破合并回环
     let lastAddAt = 0;
     let synced = false;         // MQTT 是否已连上（决定气泡提示口径）
@@ -202,7 +219,7 @@
       const sTo = String(to || '').trim().slice(0, 16);
       const sMsg = String(msg || '').trim().slice(0, 60);
       const it = {
-        id: myId + '-' + (++mySeq),
+        id: myId + '-' + nextSeq(),
         cid: myId,
         who: myName(),
         to: sTo,

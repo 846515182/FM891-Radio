@@ -136,6 +136,20 @@ public class MainActivity extends Activity {
             PlaybackService.stopFor(MainActivity.this);
         }
 
+        /**
+         * Start the foreground media service + keep-alive locks WITHOUT the ICY
+         * reader. v1.20's stream is a bare MP3 (no in-band metadata), so a reader
+         * would pull the whole stream just to discard it — but the lock-screen
+         * card, the system media player and screen-off playback all hang off the
+         * service. The page calls this the instant audible playback succeeds.
+         * Safe to call repeatedly (startService re-enters onStartCommand).
+         */
+        @android.webkit.JavascriptInterface
+        public void media() {
+            acquirePower();
+            PlaybackService.startFor(MainActivity.this);
+        }
+
         @android.webkit.JavascriptInterface
         public void station(String name) {
             PlaybackService.setStation(name);

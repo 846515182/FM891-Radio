@@ -1181,3 +1181,144 @@ body.playing .stage h1 {
   0%, 100% { text-shadow: 0 2px 22px rgba(139, 92, 246, 0.4); }
   50% { text-shadow: 0 2px 30px rgba(240, 171, 252, 0.65); }
 }
+
+/* ============ v1.20.1 · 压紧布局 + 科技感（末尾覆盖块）============
+ * 全部改动只写在文件末尾：选择器与上面同特异性、源码顺序在后即生效，
+ * 历史规则一条没动 —— static-check 断言的 .station:first-child::after /
+ * .online-pill / .online-pill.dim / .air-bar / .req-msg / .online-pill .src /
+ * [hidden]{display:none!important} 全部原样保留。
+ * ① 压紧：封面 256→150、各段留白收窄，整屏约省 200px（原来要滚一屏）；
+ * ② 科技感：HUD 斜角括号、底纹网格、封面扫描线、霓虹青高亮、等宽数字。 */
+
+/* —— ① 压紧：骨架与头部 —— */
+.app {
+  padding: calc(env(safe-area-inset-top, 0px) + 12px) 14px calc(env(safe-area-inset-bottom, 0px) + 18px);
+}
+.brand { gap: 8px; padding: 4px 12px 4px 4px; }
+.brand-logo { font-size: 20px; }
+.brand-avatar { width: 34px; height: 34px; }
+.slogan { margin: 5px 0 0; }
+.pill-row { margin-top: 6px; }
+
+/* —— ① 压紧：播放器卡片 —— */
+.player {
+  margin-top: 12px;
+  padding: 14px 13px 13px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(34, 211, 238, 0.05), rgba(139, 92, 246, 0.055) 45%, rgba(255, 255, 255, 0.03));
+}
+
+/* —— ② 科技感：HUD 斜对角括号（仪表盘取景框）—— */
+.player::before,
+.player::after {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid rgba(34, 211, 238, 0.7);
+  box-shadow: 0 0 10px rgba(34, 211, 238, 0.35);
+  pointer-events: none;
+}
+.player::before { top: 7px; left: 7px; border-right: 0; border-bottom: 0; }
+.player::after { bottom: 7px; right: 7px; border-left: 0; border-top: 0; }
+
+/* —— ① 压紧 + ② 科技感：黑胶封面 —— */
+.cover {
+  width: min(46vw, 150px);
+  border-radius: 20px;
+}
+.status { top: 8px; left: 8px; font-size: 10px; padding: 4px 8px; }
+.note { width: 34px; height: 34px; }
+.eq {
+  bottom: 9px;
+  gap: 4px;
+  height: 30px;
+  padding: 5px 11px;
+}
+.eq i {
+  width: 5px;
+  height: 6px;
+  background: linear-gradient(180deg, #22d3ee, #a78bfa);
+  box-shadow: 0 0 6px rgba(34, 211, 238, 0.55);
+}
+.eq i:nth-child(2) { height: 12px; }
+.eq i:nth-child(3) { height: 18px; }
+.eq i:nth-child(4) { height: 10px; }
+.eq i:nth-child(5) { height: 8px; }
+
+/* 封面叠一层扫描线（CRT 仪表感），pointer-events:none 不挡点击 */
+.cover::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  background: repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.055) 0 1px, transparent 1px 4px);
+  pointer-events: none;
+}
+
+/* —— ① 压紧：文案区（播报字幕最长留 3 行，全文仍在 DOM 里）—— */
+.stage h1 { margin: 10px 0 3px; font-size: 20px; }
+.stage .desc {
+  margin: 7px auto 0;
+  padding: 7px 11px;
+  font-size: 12px;
+  line-height: 1.65;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+.song-meta { margin-top: 7px; }
+.meta-chip { padding: 3px 9px; }
+
+/* —— ① 压紧：音量 / 点歌气泡 / 进度行 / 页脚 —— */
+.volume { margin-top: 12px; gap: 10px; }
+.volume input[type="range"] { height: 22px; }
+.dj-bubble { margin-top: 10px; padding: 8px 11px; }
+.vod-row { margin-top: 10px; }
+footer { margin-top: 14px; }
+.link-btn { margin-top: 6px; }
+
+/* —— ② 科技感：等宽数字（在线人数 / 曲库 / 进度时刻 / 排位序号）—— */
+.online-pill b,
+.lib-pill b,
+.vod-time,
+.req-no,
+.upd-pct {
+  font-family: "SFMono-Regular", "Roboto Mono", Consolas, "Liberation Mono", monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.5px;
+}
+
+/* —— ② 科技感：品牌频率标发光 —— */
+.brand-logo span {
+  letter-spacing: 1px;
+  text-shadow: 0 0 14px rgba(34, 211, 238, 0.55);
+}
+
+/* —— ② 科技感：进度条换霓虹渐变 —— */
+.vod-track i {
+  background: linear-gradient(90deg, #22d3ee, #a78bfa);
+  box-shadow: 0 0 10px rgba(34, 211, 238, 0.6);
+}
+
+/* —— ② 科技感：底纹网格（辉光之上叠一层 HUD 网格，两层原渐变原样保留）—— */
+.bg-glow {
+  background:
+    repeating-linear-gradient(0deg, rgba(34, 211, 238, 0.05) 0 1px, transparent 1px 46px),
+    repeating-linear-gradient(90deg, rgba(167, 139, 250, 0.05) 0 1px, transparent 1px 46px),
+    radial-gradient(60vw 60vw at 15% -10%, rgba(139, 92, 246, 0.38), transparent 60%),
+    radial-gradient(50vw 50vw at 110% 20%, rgba(236, 72, 152, 0.28), transparent 60%),
+    radial-gradient(70vw 50vw at 50% 120%, rgba(56, 189, 248, 0.16), transparent 60%),
+    radial-gradient(120vw 90vw at 50% 50%, transparent 45%, rgba(0, 0, 0, 0.32) 100%);
+}
+
+/* —— ② 科技感：光晕动画换冷色（同名 keyframes 以后定义者为准）—— */
+@keyframes titleGlow {
+  0%, 100% { text-shadow: 0 2px 22px rgba(34, 211, 238, 0.35); }
+  50% { text-shadow: 0 2px 30px rgba(167, 139, 250, 0.7); }
+}
+@keyframes bounce {
+  0%, 100% { height: 6px; }
+  50% { height: 22px; }
+}
