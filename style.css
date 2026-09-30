@@ -12,6 +12,12 @@
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
+/* [hidden] 必须真隐藏：作者样式（.dj-bubble{display:flex} 等）优先级高于
+ * UA 样式表的 [hidden]{display:none}，不加 !important 会被盖掉 —— v1.19
+ * 真机踩过：一起听条永远可见，看着像「自动加入没生效」，还会被提前点中
+ * 把 following 永久置位堵死自动加入。一行规则，全站断根。 */
+[hidden] { display: none !important; }
+
 html, body { margin: 0; padding: 0; }
 
 ::selection { background: rgba(139, 92, 246, 0.55); color: #fff; }

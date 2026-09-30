@@ -1321,6 +1321,11 @@ async function play() {
     if (err && err.name === 'NotAllowedError') {
       shouldPlay = false;
       abortReissue = 0;
+      // 让出跟播位：条子重新露出当「一起听」把手（配合 [hidden] 修复，
+      // 它真能藏也能现），下一条 air 还会自动重试加入
+      following = false;
+      playingAirId = '';
+      renderAirBar();
       updatePlayUI();
       setStatus('', '点击播放开始收听');
       toast('自动播放被拦了一下，点播放键就开始 🎧');
@@ -1397,7 +1402,11 @@ async function playAirNow() {
   const dur = Number(j.dur) || 0;
   // 服务器时间略超前时等它一拍：条件用「还是同一条消息」判，
   // 手动点和自动加入两种入口都成立（旧版判 following，自动加入还没置位会卡死）
-  if (el < -500) { setTimeout(() => { if (airInfo === j && !userPaused) playAirNow(); }, -el + 120); return; }
+  if (el < -500) {
+    setStatus('loading', '正在对齐开播时间…');   // 等待也要有话，别像死了
+    setTimeout(() => { if (airInfo === j && !userPaused) playAirNow(); }, -el + 120);
+    return;
+  }
   if (dur && el > dur * 1000 + 8000) { setStatus('', '等下一首开播…'); return; }
   following = true;
   playingAirId = j.id;
@@ -1727,7 +1736,10 @@ wireVodSeek();
 const airBarEl = $('airBar');
 if (airBarEl) {
   airBarEl.addEventListener('click', () => {
-    following = true;
+    /* 不预置 following：air 还没到（消息 1~3 秒才来）时点它，旧写法把
+     * following 永久置位后 playAirNow 静默返回，之后 onAir 的自动加入
+     * 闸门永久跳过 = 打开永远没声（v1.19 真机踩过）。 */
+    if (!airInfo) { toast('开播马上就来，稍等一下 🎵'); return; }
     playAirNow();
   });
 }
@@ -2027,7 +2039,7 @@ function currentVersion() {
       if (v) return v;
     }
   } catch (_) { /* 忽略 */ }
-  return '1.19'; // 网页版：与 manifest versionName 同步维护
+  return '1.19.1'; // 网页版：与 manifest versionName 同步维护
 }
 
 let updateUrl = '';
