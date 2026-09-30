@@ -1322,3 +1322,131 @@ footer { margin-top: 14px; }
   0%, 100% { height: 6px; }
   50% { height: 22px; }
 }
+
+/* ============ v1.20.2 · 正在播放做实 + 接下来列表 ============
+ * 用户原话：「歌曲播放和点歌流程很难看，要么不醒目要么很隐蔽」。
+ * 改法：把「此刻在放」做成真正的主角（封面/歌名放大、状态更醒目），
+ * 下面加一条**可横向滑动的接下来歌单**（服务器 air.next 带来，最多 5 首，
+ * 点歌排最前）—— 电台本来就该让人看见接下来放什么，自己的歌排第几一眼可见。
+ * 同样是末尾覆盖：前面所有历史规则一字未动。 */
+
+/* —— 正在播放：主角做实 —— */
+.stage .cover {
+  width: min(52vw, 168px);
+  border-radius: 22px;
+}
+.stage h1 {
+  font-size: 23px;
+  margin: 11px 0 4px;
+}
+.stage .status {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(52, 211, 153, .18);
+  border: 1px solid rgba(52, 211, 153, .55);
+  box-shadow: 0 0 12px rgba(52, 211, 153, .35);
+}
+.song-meta { margin-top: 9px; }
+
+/* —— 接下来：横向滑动歌单 —— */
+.upnext {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, .09);
+}
+.upnext[hidden] { display: none !important; }
+
+.upnext-h {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 2.5px;
+  color: rgba(34, 211, 238, .85);
+}
+.upnext-tip {
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--muted);
+  opacity: .55;
+}
+
+.upnext-strip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 3px;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.upnext-strip::-webkit-scrollbar { display: none; }
+
+.upnext-item {
+  position: relative;
+  flex: none;
+  width: 136px;
+  scroll-snap-align: start;
+  padding: 8px 10px 9px;
+  border-radius: 13px;
+  border: 1px solid rgba(34, 211, 238, .22);
+  background: linear-gradient(160deg, rgba(34, 211, 238, .08), rgba(139, 92, 246, .07));
+}
+.upnext-item.lib {
+  border-color: rgba(255, 255, 255, .09);
+  background: rgba(255, 255, 255, .035);
+}
+.upnext-no {
+  position: absolute;
+  top: 7px;
+  right: 9px;
+  font-family: "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  color: rgba(34, 211, 238, .6);
+}
+.upnext-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding-right: 12px;
+}
+.upnext-main b {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.upnext-main small {
+  font-size: 10.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.upnext-who {
+  display: inline-block;
+  margin-top: 5px;
+  max-width: 100%;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 9.5px;
+  font-weight: 700;
+  color: #f5d0fe;
+  background: rgba(236, 72, 152, .16);
+  border: 1px solid rgba(236, 72, 152, .3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

@@ -265,14 +265,28 @@
       const id = typeof msg.id === 'string' ? msg.id : '';
       if (!id) return false;
       if (!msg.stage) { prog.delete(id); return true; }
-      const stages = ['search', 'download', 'transcode', 'merge'];
+      /* miss（云端没找到）也在白名单里：以前这一档不在，未知 stage 一律被当成
+       * search，服务器如实报了「没找到」客户端照样显示「找歌中」—— 用户只
+       * 知道自己点的歌永远在找，不知道是找不到、也不知道能换一首。 */
+      const stages = ['search', 'download', 'transcode', 'merge', 'miss'];
+      const stage = stages.indexOf(msg.stage) >= 0 ? msg.stage : 'search';
       prog.set(id, {
-        stage: stages.indexOf(msg.stage) >= 0 ? msg.stage : 'search',
+        stage: stage,
         done: Math.max(0, Number(msg.done) || 0),
         total: Math.max(0, Number(msg.total) || 0),
         eta: Math.max(0, Number(msg.eta) || 0),
         ts: Number(msg.ts) || Date.now(),
       });
+      /* 「没找到」是**结论**不是进度：进度只有 6 分钟新鲜度，过了就退回
+       * 「云端还在找」。所以它要落进条目自己的状态里，才留得住。 */
+      if (stage === 'miss') {
+        const hit = items.get(id);
+        if (hit && hit.st !== 'miss') {
+          hit.st = 'miss';
+          hit.ver = (hit.ver || 0) + 1;
+          render();
+        }
+      }
       if (prog.size > MAX_PROG) {
         const arr = [];
         prog.forEach((v, k) => arr.push([k, v]));
@@ -300,6 +314,7 @@
     }
 
     function progLabel(p) {
+      if (p.stage === 'miss') return { text: '没找到这首歌 · 换一首吧', cls: 'st-miss' };
       if (p.stage === 'merge') return { text: '云端合成播报中…', cls: 'st-search' };
       if (p.stage === 'transcode') return { text: '转码中… 马上就好', cls: 'st-search' };
       if (p.stage !== 'download' || !p.total) return { text: '全网找歌中…', cls: 'st-search' };
@@ -391,6 +406,28 @@
      * 正在跟播的人自动切到下一首，没在听的人露出「一起听」条。 */
     let airState = null;
 
+    /* 服务器随 air 一起发的「接下来 N 首」（最多 5 首）。逐条校验：脏数据只丢
+     * 自己那一条，不整包不带 —— onAirMsg 是白名单式校验，字段没显式放行就
+     * 被吃掉，客户端歌单会永远空白（v1.20.2 第一版就踩了这个坑）。 */
+    function normNext(arr) {
+      if (!Array.isArray(arr)) return [];
+      const out = [];
+      for (const it of arr.slice(0, 5)) {
+        if (!it || typeof it !== 'object') continue;
+        const title = typeof it.title === 'string' ? it.title.trim().slice(0, 40) : '';
+        if (!title) continue;
+        out.push({
+          id: typeof it.id === 'string' ? it.id.slice(0, 60) : '',
+          title: title,
+          artist: typeof it.artist === 'string' ? it.artist.slice(0, 24) : '',
+          dur: Math.max(0, Number(it.dur) || 0),
+          who: typeof it.who === 'string' ? it.who.slice(0, 16) : '',
+          lib: !!it.lib,
+        });
+      }
+      return out;
+    }
+
     function onAirMsg(j) {
       if (!j || typeof j !== 'object') return false;
       const id = typeof j.id === 'string' ? j.id : '';
@@ -409,6 +446,7 @@
         artist: typeof j.artist === 'string' ? j.artist.slice(0, 40) : '',
         // 台词是「点播归属+歌曲背景」的分层长句，80 字会截掉后半句
         ann: typeof j.ann === 'string' ? j.ann.slice(0, 240) : '',
+        next: normNext(j.next),      // 「接下来」歌单（客户端那栏就靠它）
       };
       ensureCatalog();   // 音源地址到位 → 顺手拉曲库（联想/AI 祝福/速点要用）
       render();          // 「正在播」标签跟着换条目
@@ -537,7 +575,7 @@
       }
       switch (it.st) {
         case 'searching': return { text: '云端找歌中…', cls: 'st-search' };
-        case 'miss': return { text: '暂时没找到', cls: 'st-miss' };
+        case 'miss': return { text: '没找到这首歌 · 换一首吧', cls: 'st-miss' };
         // 电台化：没有「点一下立刻播」了，条目就是队列 —— 第几位 ≈ 什么时候轮到
         default: return { text: '第 ' + (i + 1) + ' 位', cls: 'st-wait' };
       }

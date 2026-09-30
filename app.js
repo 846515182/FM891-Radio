@@ -1447,6 +1447,9 @@ function onAir(body) {
     playingAirId = id;
     renderNowPlaying(body);
   }
+  /* 「接下来」跟歌单一起发过来，换不换歌都要刷 —— 刚被插到下一首的那首
+   * 就是在这里冒出来的（服务器 promote_now）。 */
+  renderUpNext(body.next);
   const dur = Number(body.dur) || 0;
   const st = Number(body.startedAt) || 0;
   airProgress = dur > 0 && st > 0 ? { startedAt: st, dur: dur } : null;
@@ -1578,6 +1581,47 @@ function renderNowPlaying(j) {
   updateMediaSession();
 }
 
+/* 「接下来」列表：服务器随 air 一起发 next（最多 5 首，按轮播顺序，点歌在前、
+ * 垫场在后）。刚备好的点歌会被插到下一首 —— 就是在这里冒出来的。
+ * 单曲模式下不显示：那会儿耳朵里是单曲，混着电台歌单只会更乱。 */
+function renderUpNext(list) {
+  const box = $('upNext');
+  const strip = $('upNextList');
+  if (!box || !strip) return;
+  const arr = Array.isArray(list) ? list.filter((x) => x && x.title).slice(0, 5) : [];
+  if (!arr.length || vod) { box.hidden = true; return; }
+  const sig = arr.map((x) => String(x.id || x.title)).join('|');
+  if (strip.getAttribute('data-sig') === sig) return;   // 同一份别重画，别打断正在滑的列表
+  strip.setAttribute('data-sig', sig);
+  strip.textContent = '';
+  arr.forEach((it, i) => {
+    const cell = document.createElement('div');
+    cell.className = 'upnext-item' + (it.lib ? ' lib' : '');
+    const no = document.createElement('span');
+    no.className = 'upnext-no';
+    no.textContent = String(i + 1);
+    const main = document.createElement('span');
+    main.className = 'upnext-main';
+    const b = document.createElement('b');
+    b.textContent = String(it.title || '').slice(0, 24);
+    const s = document.createElement('small');
+    s.textContent = it.artist ? String(it.artist).slice(0, 16)
+      : (it.lib ? '电台垫场' : '正在准备');
+    main.appendChild(b);
+    main.appendChild(s);
+    cell.appendChild(no);
+    cell.appendChild(main);
+    if (it.who && !it.lib) {
+      const w = document.createElement('span');
+      w.className = 'upnext-who';
+      w.textContent = String(it.who).slice(0, 8) + ' 点的';
+      cell.appendChild(w);
+    }
+    strip.appendChild(cell);
+  });
+  box.hidden = false;
+}
+
 /* 进入单曲模式：只改地址和展示，不动 shouldPlay、不改 playToken ——
  * 紧接着那次 play() 会照常走完它已有的全部防抖/恢复路径。 */
 function enterVod(info) {
@@ -1641,6 +1685,8 @@ function exitVod() {
   const row = $('vodRow');
   // 进度条不能跟着藏：air 还有「当前这首播到哪」要继续显示
   if (row) row.hidden = !airProgress;
+  // 「接下来」在单曲模式里是藏着的，回来了要接着显示
+  renderUpNext(airInfo && airInfo.next);
 }
 
 /* 对外入口：点歌模块 / 阶段2 worker 播一首"已经就绪"的单曲 */
@@ -2164,7 +2210,7 @@ function currentVersion() {
       if (v) return v;
     }
   } catch (_) { /* 忽略 */ }
-  return '1.20.1'; // 网页版：与 manifest versionName 同步维护
+  return '1.20.2'; // 网页版：与 manifest versionName 同步维护
 }
 
 let updateUrl = '';
