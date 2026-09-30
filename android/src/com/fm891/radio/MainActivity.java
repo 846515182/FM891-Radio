@@ -72,6 +72,11 @@ public class MainActivity extends Activity {
         s.setSupportZoom(false);
         s.setBuiltInZoomControls(false);
         s.setCacheMode(WebSettings.LOAD_DEFAULT);
+        /* v1.20：直播流走直连 http://IP:8080（隧道每天换域名，长连接最怕它）。
+         * 页面是 file:// —— Chromium 把 file:// 当可信源，加载 http 资源会按
+         * 「混合内容」拦，而 WebView 默认 NEVER_ALLOW。不放开这条，直连流
+         * 根本拉不起来，App 会一直卡在重连。 */
+        s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
 
         webView.setWebViewClient(new WebViewClient());
         webView.setBackgroundColor(0xFF0D0821);

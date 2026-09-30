@@ -37,7 +37,7 @@
     <section class="player" aria-label="播放器">
       <div class="stage">
         <div class="cover" id="cover">
-          <span class="status" id="status">点击播放开始收听</span>
+          <span class="status" id="status">正在接通直播…</span>
           <div class="cover-ring" aria-hidden="true"></div>
           <svg class="note" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
@@ -52,14 +52,8 @@
         <div class="song-meta" id="songMeta" hidden></div>
       </div>
 
-      <section class="controls">
-        <button class="play-btn" id="playBtn" type="button" aria-label="播放">
-          <svg class="ic-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-          <svg class="ic-pause" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
-        </button>
-      </section>
-
-      <!-- 点歌单曲的进度条：只有单曲模式才露出，直播台永远不显示（直播没有进度概念） -->
+      <!-- v1.20：直播没有「暂停」—— 收音机拧开就一直听，所以不再有播放/暂停按钮。
+           进度条现在表示「当前这首播到哪」，由服务端 air.startedAt 驱动（不可拖动）。 -->
       <div class="vod-row" id="vodRow" hidden>
         <span class="vod-time" id="vodCur">0:00</span>
         <span class="vod-track" id="vodTrack" role="slider" aria-label="播放进度" tabindex="0"><i id="vodPct"></i></span>
@@ -78,11 +72,12 @@
         <span class="dj-cta">点歌</span>
       </button>
 
-      <!-- 云同步开播：服务器在放什么，全网同一时刻听同一段；点它一起听 -->
-      <button class="dj-bubble air-bar" id="airBar" type="button" hidden aria-label="一起听云开播">
+      <!-- 直播接入提示：正常情况下 App 一打开就连上流并出声，这条是隐藏的。
+           只有自动播放被拦 / 断线待救时才露出来，点一下（重新）接上直播。 -->
+      <button class="dj-bubble air-bar" id="airBar" type="button" hidden aria-label="接上直播">
         <span class="dj-face" aria-hidden="true">📻</span>
         <span class="dj-text" id="airText">正在开播</span>
-        <span class="dj-cta">一起听</span>
+        <span class="dj-cta">接上</span>
       </button>
     </section>
 

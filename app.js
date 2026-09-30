@@ -978,6 +978,19 @@ if (safeGet('fm891.ord') !== '3') {
 
 let attachedUrl = null;   // 当前 audio 已加载的地址
 
+/* ---------------- v1.20 连续直播流（App = 纯收音机） ----------------
+ * 服务器把点播、垫场歌、台呼按轮播顺序用 ffmpeg 实时拼成一条不断的 MP3 流
+ * （/stream），全网听众收到的是**同一批字节**，切歌在服务端完成。App 侧
+ * 因此不再需要：自己选曲、按 startedAt seek 对齐、播完接棒 —— 那套正是
+ * 「间歇性」的根源（每首歌重新下载+定位，必然有缝）。App 只负责连上、
+ * 出声、断了自动重连；air 消息降级为纯 UI（曲目 / 播报 / 点歌进度）。 */
+const STREAM_DIRECT = 'http://177.3.32.94:8080/stream';   // 直连，不经隧道、最快最稳
+let streamPrimary = STREAM_DIRECT;   // air.stream 回发时覆盖（服务器换 IP 不用发版）
+let streamTunnel = '';                // 隧道备用地址，从 air.url 的 origin 推导
+let streamFailover = 0;               // 自上次成功以来连着失败了几次（playing 时归零）
+let streamLastGoodTunnel = false;     // 上次**成功出声**走的是哪条线（决定重连先试哪条）
+let streamAttemptTunnel = false;      // 本次 liveUrl() 选中的线路，成功后回写成 lastGood
+
 /* 点歌单曲（VOD）状态。null = 直播模式，**所有与直播的分叉都会走直播分支**，
  * 行为与加这个字段之前逐条一致 —— v1.15 刚把切换/重连修好，不能顺手改坏。
  * 真正需要分叉的只有四处：播什么地址、出声后说什么、走不走 ICY 读曲目、
@@ -1155,8 +1168,10 @@ function updateNowPlaying() {
 function updatePlayUI() {
   const playing = !audio.paused && shouldPlay;
   document.body.classList.toggle('playing', playing);
-  playBtn.classList.toggle('is-playing', playing);
-  playBtn.setAttribute('aria-label', playing ? '暂停' : '播放');
+  if (playBtn) {   // v1.20 直播没有播放/暂停键，元素已移除；网页版可能仍是旧 HTML
+    playBtn.classList.toggle('is-playing', playing);
+    playBtn.setAttribute('aria-label', playing ? '直播中' : '播放');
+  }
   $('liveDot').hidden = !playing;
   if ('mediaSession' in navigator) {
     try { navigator.mediaSession.playbackState = playing ? 'playing' : 'paused'; } catch (_) { /* 忽略 */ }
@@ -1273,6 +1288,18 @@ async function attach(url, force) {
 }
 
 /* ---------------- 播放控制 ---------------- */
+/* 当前该连哪条直播流：直连优先；直连连不上（换过重试次数）就走隧道，
+ * 两条都活着时永远优先直连 —— 隧道域名每天变，长连接最怕它。 */
+function liveUrl() {
+  /* 选线规则（实测：直连 15s 零空隙、均速 15.3KB/s；隧道偶发 8s 停顿 ——
+   * 直连永远更好，隧道只在直连**真的不通**时才轮上）：
+   *   · 上次成功用的哪条，下次重连就先试哪条（别在直连好好的时候跳去隧道）；
+   *   · 连着失败就每失败一次换一条，保证直连被墙/被限速时也能很快兜到隧道。 */
+  streamAttemptTunnel = !!(streamTunnel &&
+    (streamLastGoodTunnel ? streamFailover % 2 === 0 : streamFailover % 2 === 1));
+  return streamAttemptTunnel ? streamTunnel : (streamPrimary || STREAM_DIRECT);
+}
+
 async function play() {
   const token = ++playToken;   // 本次播放的代际；期间被新的 play/pause/切台 取代即作废
   shouldPlay = true;
@@ -1283,15 +1310,15 @@ async function play() {
   beginSwitch(700);            // 换源窗口：本次 attach 产生的拆源事件先不处理
   try {
     // 上一次源报过错时，元素仍带着 error 标记，必须强制换一次 src 才能恢复
-    await attach(isVod() ? vod.url : current().url, !!audio.error);
+    // v1.20：直播模式永远连服务器的 /stream（不是 air.url 里的单曲文件）。
+    // 单曲仍走 vod.url（手动点播保留这一路）。
+    await attach(isVod() ? vod.url : liveUrl(), !!audio.error);
     if (token !== playToken) return;
     await audio.play();
     if (token !== playToken) return;
     abortReissue = 0;          // 已成功出声，良性中断补发计数归零
-    // 单曲没有流内元数据，再去开一路 ICY 读取只是白耗连接和带宽
-    if (window.AndroidIcy && !isVod()) {
-      try { window.AndroidIcy.start(current().url); } catch (_) { /* 忽略 */ }
-    }
+    /* 流里没有 ICY 单曲元数据（服务端 ffmpeg 直出裸 MP3），曲目标题一律由
+     * air 消息给 —— 再开一路 ICY 只是白耗连接和带宽，故不再启动。 */
   } catch (err) {
     // ⓪ 已被新的播放/暂停/切台请求顶掉 —— 静默退出，绝不改状态（旧版在这儿
     //    把 shouldPlay 置 false，导致切台时新台被自己掐断 = 断流）
@@ -1321,29 +1348,27 @@ async function play() {
     if (err && err.name === 'NotAllowedError') {
       shouldPlay = false;
       abortReissue = 0;
-      // 让出跟播位：条子重新露出当「一起听」把手（配合 [hidden] 修复，
-      // 它真能藏也能现），下一条 air 还会自动重试加入。
-      // 必须连单曲态一起退 —— 否则 following=false && isVod()=true，
-      // onAir 的自动加入分支被 !isVod() 挡住，下一条照样不接（自断后路）
-      following = false;
       playingAirId = '';
       exitVod();
-      renderAirBar();
       updatePlayUI();
-      setStatus('', '点击播放开始收听');
-      toast('自动播放被拦了一下，点播放键就开始 🎧');
+      setStatus('', '点击接上直播');
+      /* 直播没有播放键，这里必须给出一个可点的把手 —— 把开播条露出来当
+       * 「点击收听」用，点一下（由 airBar 的 click 处理）重新接上。 */
+      const ab = $('airBar');
+      if (ab) {
+        ab.hidden = false;
+        const at = $('airText');
+        if (at) at.textContent = '自动播放被拦了一下，点这里接上直播';
+      }
+      toast('自动播放被拦了一下，点「接上」就开始 🎧');
       return;
     }
 
-    // ④ 真失败（地址根本不存在）
-    shouldPlay = false;
+    // ④ 真失败（地址根本拉不起来）→ 转重连通道：直播必须一直活着，
+    //    不能像旧版那样停在「点击播放开始收听」等一个已经不存在的按钮。
     abortReissue = 0;
     updatePlayUI();
-    setStatus('', '点击播放开始收听');
-    toast('播放失败：当前频道源暂时不可用，换个频道试试或稍后重试');
-    if (window.AndroidIcy) {
-      try { window.AndroidIcy.stop(); } catch (_) { /* 忽略 */ }
-    }
+    handleStreamError();
   }
 }
 
@@ -1363,100 +1388,94 @@ function pause() {
   }
 }
 
-/* ---------------- 云同步开播（像真电台） ----------------
- * 服务器在 fm891-radio/air 上 retain 当前开播的歌（含 startedAt/dur/ann）。
- * 所有 App 同一时刻听同一段：加入时按「已播时长」seek 对齐进度，换歌时
- * 自动跟着切 —— 播报（谁点的、送给谁、祝福语）已由云端拼在音频开头。 */
+/* ---------------- 云同步开播（air 消息 = 纯 UI） ----------------
+ * 服务器在 fm891-radio/air 上 retain 当前开播的歌（含 startedAt/dur/ann/stream）。
+ * v1.20 起 air **不再驱动播放** —— 音频来自服务器连续推的 /stream，全网
+ * 收到的本就是同一批字节。air 只负责四件事：
+ *   ① 更新大标题 / 歌手 / 播报 / 锁屏；② 回发直连与隧道的流地址；
+ *   ③ 驱动「当前这首播到哪」的只读进度；④ 点歌台的排位展示。
+ * 旧版「按 startedAt seek 对齐 + 播完接棒」整段删除：那正是间歇性根源。 */
 let airInfo = null;      // 最新一条云开播消息
-let following = false;   // 是否跟着云开播听
-let playingAirId = '';   // 当前这轮播的是哪条 air
+let playingAirId = '';   // 最近一次展示过的 air id（同一首不重复刷界面）
+let airProgress = null;  // {startedAt, dur} —— 只读进度条数据源（直播不可拖动）
 
 function renderAirBar() {
+  /* 我们一打开就连上流，「一起听」把手平时没用；只在**还没接上**时露出来，
+   * 当「点一下接上直播」的救急入口（自动播放被拦 / 断线待救时才有意义）。
+   * 判定用「播放意图 + 已挂源」而不是 audio.paused：后者在 jsdom / 缓冲
+   * 瞬间都是 true，会把手该藏的时候露出来。 */
   const bar = $('airBar');
-  const txt = $('airText');
   if (!bar) return;
-  const j = airInfo;
-  const dur = (j && Number(j.dur)) || 0;
-  const left = j ? (Number(j.startedAt) || 0) + dur * 1000 - Date.now() : -1;
-  const live = !!j && left > -8000;   // 这首还没放完（含换歌间隙）
-  bar.hidden = !live || following;
-  if (live && txt) txt.textContent = '正在开播《' + String(j.title || '') + '》';
+  bar.hidden = !!(shouldPlay && attachedUrl && !audio.error);
+  const txt = $('airText');
+  if (txt) {
+    /* 单曲模式下绝不能顶着直播歌名 —— 此时把手点下去是**重播单曲**，
+     * 文案必须对得上动作（否则用户以为点了会切回直播）。 */
+    if (vod && !shouldPlay) txt.textContent = '单曲播完了 · 点这里再听一遍';
+    else if (airInfo && airInfo.title) txt.textContent = '正在开播《' + String(airInfo.title) + '》';
+  }
 }
 
+/* air → 纯 UI。刻意不碰 audio、不 attach、不 seek。 */
 function onAir(body) {
   if (!body || typeof body !== 'object' || !body.url) return;
-  const prev = airInfo;
   airInfo = body;
+  /* 服务器回发的流地址优先（换 IP / 换隧道都不用发版）：
+   * - body.stream 是直连地址（首选）
+   * - body.url 是成片地址，取其 origin 推导隧道备用流 */
+  if (body.stream) streamPrimary = String(body.stream);
+  try {
+    if (body.url) streamTunnel = new URL(String(body.url)).origin + '/stream';
+  } catch (_) { /* 地址不合法就沿用上一次的 */ }
+
+  const id = String(body.id || '');
+  if (playingAirId !== id) {
+    playingAirId = id;
+    renderNowPlaying(body);
+  }
+  const dur = Number(body.dur) || 0;
+  const st = Number(body.startedAt) || 0;
+  airProgress = dur > 0 && st > 0 ? { startedAt: st, dur: dur } : null;
+  const row = $('vodRow');
+  if (row && !vod) row.hidden = !airProgress;
+  if (airProgress) renderVodProgress();
   renderAirBar();
-  /* 打开 App 默认就出声（加入云广播，像收音机拧开就有）：
-   * 只有用户主动按过暂停、或正在听手动单曲时才不打扰。 */
-  if (!following && !userPaused && !isVod()) { playAirNow(); return; }
-  if (!following) return;
-  const changed = !prev || prev.id !== body.id || prev.url !== body.url;
-  /* 换歌自动接棒，唯一豁免是「用户主动暂停过」：
-   *  - shouldPlay=true 正常接；
-   *  - shouldPlay=false 但没被暂停过（播完空窗、播放失败）→ 换了歌
-   *    就是新地址，值得自动重试，别让用户手动救。 */
-  if (changed && !userPaused) playAirNow();
+  /* 还没连上流就靠这条 air 兜底接上（启动即连是主路径，这里是保险）。
+   * v1.20 没有暂停键，userPaused 恒为 false。 */
+  if (!shouldPlay && !userPaused && !isVod()) startStream();
 }
 
-/* 加入云开播：按 startedAt 对齐进度，让所有人听到同一个位置 */
-async function playAirNow() {
-  const j = airInfo;
-  if (!j || !j.url) return;
-  const el = Date.now() - (Number(j.startedAt) || 0);
-  const dur = Number(j.dur) || 0;
-  // 服务器时间略超前时等它一拍：条件用「还是同一条消息」判，
-  // 手动点和自动加入两种入口都成立（旧版判 following，自动加入还没置位会卡死）
-  if (el < -500) {
-    setStatus('loading', '正在对齐开播时间…');   // 等待也要有话，别像死了
-    setTimeout(() => { if (airInfo === j && !userPaused) playAirNow(); }, -el + 120);
+/* 接上直播流：**唯一**的播放入口，幂等（已在听就什么都不做）。
+ * 直播没有暂停 —— 收音机拧开就一直听，断了由重连通道自己救回来。 */
+function startStream() {
+  userPaused = false;
+  if (shouldPlay && !audio.paused && attachedUrl && !audio.error) {
+    renderAirBar();
     return;
   }
-  if (dur && el > dur * 1000 + 8000) { setStatus('', '等下一首开播…'); return; }
-  following = true;
-  playingAirId = j.id;
-  renderAirBar();
-  setStatus('loading', '接入云开播…');
-  enterVod({ url: j.url, title: j.title, from: j.from || '', ann: j.ann || '',
-             dur: dur, artist: j.artist || '', to: j.to || '' });
-  await play();
-  const target = Math.max(0, el / 1000);
-  const seek = () => {
-    // 期间换歌/退出了就作废：新一首有自己的 startedAt
-    if (!isVod() || !airInfo || airInfo.id !== playingAirId) return;
-    try {
-      if (isFinite(audio.duration) && target < audio.duration - 1) audio.currentTime = target;
-    } catch (_) { /* 忽略 */ }
-  };
-  if (isFinite(audio.duration)) seek();
-  else audio.addEventListener('loadedmetadata', seek, { once: true });
+  shouldPlay = true;
+  setStatus('loading', '正在接通直播…');
+  play().then(renderAirBar).catch(() => { /* play() 内部已接管失败处理 */ });
 }
+
+/* 旧名保留给 airBar 点击等入口：语义已从「seek 对齐加入云开播」简化为
+ * 「接上直播」—— 字节本身全网同步，无需对齐。 */
+async function playAirNow() { startStream(); }
 
 function startAir() {
   if (!airInfo) {
-    setStatus('', '云端待机 · 点一首歌就开始');
-    toast('云端还没开播，点一首歌马上就有');
-    const dj = $('djBubble');
-    if (dj) dj.click();
-    return;
+    setStatus('loading', '正在接通直播…');
+    toast('直播马上就来，正在连…');
   }
-  playAirNow();
+  startStream();
 }
 
-function rejoinAir() {
-  // 暂停期间可能已经换歌 → 总是从最新 airInfo 重新对齐
-  playAirNow();
-}
+function rejoinAir() { startStream(); }
 
 function togglePlay() {
-  /* 以「播放意图」为准，不看 audio.paused：切台/缓冲瞬间 audio 是 paused 的，
-   * 旧写法这会儿再点反而又触发一次 play()，用户按不住、也取消不掉切换。 */
-  if (shouldPlay) { userPaused = true; pause(); return; }
-  userPaused = false;   // 手动开播 = 取消「别自动打扰」的标记
-  if (following) { rejoinAir(); return; }
-  if (vod) { play(); return; }   // 之前点播暂停的，继续这首
-  startAir();
+  /* 直播没有暂停，这个入口现在只负责「（重新）接上直播」。
+   * 锁屏播放键、mediaSession 的 play 都走它。 */
+  startStream();
 }
 
 async function selectStation(i, autoplay) {
@@ -1496,7 +1515,7 @@ async function selectStation(i, autoplay) {
   if (autoplay) {
     await play();
   } else if (changed) {
-    setStatus('', '点击播放开始收听');
+    setStatus('', '已切台 · 点「接上」开始收听');   // 直播没有播放键，指向的必须是真存在的把手
     updatePlayUI();
   }
 }
@@ -1516,6 +1535,31 @@ function step(delta) {
  * 重连去重。绝不另起一套播放逻辑：v1.15 刚把这些坑填平，重写等于重新挖开。 */
 function isVod() { return vod !== null; }
 
+/* 当前在放什么 → 界面（air 与本地单曲**共用同一套展示**）。
+ * 刻意不在此设 vod：vod 的语义是「本地加载的有限单曲」，而直播是一条
+ * 无限流。一旦 isVod() 为真，进度 / 播完 / 接棒那套单曲逻辑全会被误触发。 */
+function renderNowPlaying(j) {
+  const title = String((j && j.title) || '').trim().slice(0, 60) || '拾光电台 FM89.1';
+  const artist = String((j && j.artist) || '').trim().slice(0, 40);
+  const ann = String((j && j.ann) || '').trim().slice(0, 240);
+  const from = String((j && j.from) || '').trim().slice(0, 30);
+  nowTitle = '';
+  const nt = $('nowTitle');
+  if (nt) nt.textContent = '';   // 歌名归大字（h1），这里再来一遍就是重复展示
+  if (stationNameEl) stationNameEl.textContent = title;
+  const na = $('nowArtist');
+  if (na) { na.hidden = !artist; na.textContent = artist || ''; }
+  if (stationDescEl) {
+    stationDescEl.textContent = ann || (from ? from + ' 点的歌' : '正在直播');
+  }
+  document.title = title;
+  renderSongMeta();
+  if (window.AndroidIcy) {
+    try { window.AndroidIcy.station('拾光电台 FM89.1'); } catch (_) { /* 忽略 */ }
+  }
+  updateMediaSession();
+}
+
 /* 进入单曲模式：只改地址和展示，不动 shouldPlay、不改 playToken ——
  * 紧接着那次 play() 会照常走完它已有的全部防抖/恢复路径。 */
 function enterVod(info) {
@@ -1531,35 +1575,29 @@ function enterVod(info) {
   disarmStallWatchdog();
   const row = $('vodRow');
   if (row) row.hidden = false;
-  nowTitle = vod.title;
-  const nt = $('nowTitle');
-  if (nt) nt.textContent = '';   // 歌名归大字（h1），这里再来一遍就是重复展示
-  // 大标题 = 歌名，歌手单独一行，副标题 = 播报台词（与云端合成的音频同源）
-  if (stationNameEl) stationNameEl.textContent = vod.title;
-  const na = $('nowArtist');
-  if (na) { na.hidden = !vod.artist; na.textContent = vod.artist || ''; }
-  if (stationDescEl) {
-    stationDescEl.textContent = vod.ann || (vod.from ? vod.from + ' 点的歌' : '云端点播');
-  }
-  renderSongMeta();
-  document.title = vod.title;
   if (window.AndroidIcy) {
     try { window.AndroidIcy.stop(); } catch (_) { /* 忽略 */ }
   }
-  updateMediaSession();
+  renderNowPlaying(vod);
   renderVodProgress();
 }
 
-/* 歌曲信息 chips：谁点的 / 送给谁 / 歌手 / 时长 —— 一眼看全，界面不空 */
+/* 歌曲信息 chips：谁点的 / 送给谁 / 歌手 / 时长 —— 一眼看全，界面不空。
+ * 数据源统一：手动单曲优先，否则展示当前 air 那首（两者字段同构）。 */
 function renderSongMeta() {
   const el = $('songMeta');
   if (!el) return;
+  const src = vod || airInfo;
   const bits = [];
-  if (vod) {
-    if (vod.from) bits.push('💌 ' + vod.from + ' 点的');
-    if (vod.to) bits.push('🎁 送给 ' + vod.to);
-    if (vod.artist) bits.push('🎤 ' + vod.artist);
-    if (vod.dur) bits.push('⏱ ' + fmtTime(vod.dur));
+  if (src) {
+    const from = String(src.from || '').trim();
+    const to = String(src.to || '').trim();
+    const artist = String(src.artist || '').trim();
+    const dur = Number(src.dur) || 0;
+    if (from) bits.push('💌 ' + from + ' 点的');
+    if (to) bits.push('🎁 送给 ' + to);
+    if (artist) bits.push('🎤 ' + artist);
+    if (dur) bits.push('⏱ ' + fmtTime(dur));
   }
   el.innerHTML = '';
   if (!bits.length) { el.hidden = true; return; }
@@ -1578,7 +1616,8 @@ function exitVod() {
   if (!vod) return;
   vod = null;
   const row = $('vodRow');
-  if (row) row.hidden = true;
+  // 进度条不能跟着藏：air 还有「当前这首播到哪」要继续显示
+  if (row) row.hidden = !airProgress;
 }
 
 /* 对外入口：点歌模块 / 阶段2 worker 播一首"已经就绪"的单曲 */
@@ -1587,8 +1626,7 @@ async function playVod(info) {
     toast('这首还没有可播的音源，先让 DJ 找找');
     return;
   }
-  // 手动点播 = 单曲模式：退出跟播，云开播换歌不会把它切走
-  following = false;
+  // 手动点播 = 单曲模式：这轮不跟 air 展示走，云开播换歌不会把它冲掉
   playingAirId = '';
   renderAirBar();
   enterVod(info);
@@ -1609,10 +1647,20 @@ function renderVodProgress() {
   const cur = $('vodCur');
   const durEl = $('vodDur');
   if (!pct || !cur || !durEl) return;
-  // 真实时长优先（刚加载完 metadata 就有），拿不到就退回上报的估计值
-  const total = audio.duration;
-  const d = isFinite(total) && total > 0 ? total : (vod ? vod.dur : 0);
-  const t = isFinite(audio.currentTime) ? audio.currentTime : 0;
+  let t = 0;
+  let d = 0;
+  if (vod) {
+    // 手动单曲：真实时长优先（刚加载完 metadata 就有），拿不到退回上报估计值
+    const total = audio.duration;
+    d = isFinite(total) && total > 0 ? total : vod.dur;
+    t = isFinite(audio.currentTime) ? audio.currentTime : 0;
+  } else if (airProgress) {
+    /* 直播：进度由服务端 air.startedAt 驱动 —— 全网同一首同一位置，
+     * 所以这条进度条是**只读**的（wireVodSeek 里 isVod() 挡住拖动）。 */
+    d = airProgress.dur;
+    t = Math.max(0, (Date.now() - airProgress.startedAt) / 1000);
+    if (d > 0 && t > d) t = d;
+  }
   pct.style.width = (d > 0 ? Math.min(100, (t / d) * 100) : 0) + '%';
   cur.textContent = fmtTime(t);
   durEl.textContent = d > 0 ? fmtTime(d) : '--:--';
@@ -1636,10 +1684,10 @@ function wireVodSeek() {
 }
 
 /* ---------------- 错误与自动重连 ---------------- */
-/* 退避表：旧版 2500*retries = 2.5/5/7.5/10/12.5 秒，累计 37.5 秒 —— 切到一个
- * 坏台要干等近 40 秒才有结论，用户体感就是「切台失败 + 卡住不动」。
- * 收到 0.5~4.4 秒，累计约 10 秒：既有退避，又不把人吊着。 */
+/* 退避表：0.5~4.4 秒，5 次约 10 秒 —— 既有退避，又不把人吊着。
+ * 5 次之后**不放弃**，转 8 秒长间隔无限重试（见函数末尾）。 */
 const RETRY_DELAYS = [500, 900, 1600, 2700, 4400];
+const RETRY_FOREVER_MS = 8000;
 
 function handleStreamError() {
   if (!shouldPlay) return;
@@ -1647,13 +1695,17 @@ function handleStreamError() {
                             // 打进来，不挡住就会把 5 次配额在一瞬之间耗光
   const token = playToken;   // 记住发起时的代际，重连前若用户已切台/暂停就放弃
 
+  /* 每次重连换一条线路：奇数次走隧道、偶数次回直连。直连被限速/被拦、
+   * 隧道域名每天换，两条路轮流试才能自愈 —— 这是「不卡顿」的关键保险。 */
+  if (!isVod()) streamFailover += 1;
+
   if (retries < 5) {
     retries += 1;
     setStatus('loading', '重连中 ' + retries + '/5 …');
     retryTimer = setTimeout(async () => {
       retryTimer = null;
       if (!shouldPlay || token !== playToken) return;
-      const url = isVod() ? vod.url : current().url;
+      const url = isVod() ? vod.url : liveUrl();
       const bust = url + (url.includes('?') ? '&' : '?') + 'r=' + Date.now();
       beginSwitch(700);
       await attach(bust, true);
@@ -1662,23 +1714,38 @@ function handleStreamError() {
         await audio.play();
       } catch (err) {
         if (token !== playToken) return;
-        // 良性中断同样回到重连通道（内部有 shouldPlay + 排队去重兜底，
-        // 且 retries 有上限，不会自激）
+        // 良性中断同样回到重连通道（内部有 shouldPlay + 排队去重兜底）
         handleStreamError();
         return;
       }
-      if (token === playToken && window.AndroidIcy && !isVod()) {
-        try { window.AndroidIcy.start(current().url); } catch (_) { /* 忽略 */ }
-      }
+      /* 直播不再启动 ICY 曲目读取：流是服务端 ffmpeg 直出的裸 MP3，没有
+       * ICY 元数据，曲目一律由 air 消息给。 */
     }, RETRY_DELAYS[retries - 1]);
     return;
   }
 
-  shouldPlay = false;
+  /* 手动点播的单曲可能已经失效：5 次仍失败就如实停住，别无限耗着弹重连。
+   * 直播相反 —— 见下面的分支，永不放弃。 */
+  if (isVod()) {
+    shouldPlay = false;
+    retries = 0;
+    updatePlayUI();
+    setStatus('error', '点播连接失败 · 点按重试');
+    toast('点播连接失败：可能是网络问题或音源已失效');
+    return;
+  }
+
+  /* 5 次快速重连都没救回来：**直播不能停**。转长间隔继续试，服务器重启
+   * 完 / 隧道重新建好就会自己接上。旧版在这儿把 shouldPlay 置 false 并停住，
+   * 表现就是「断了再也没声，还得手动去点」。 */
   retries = 0;
   updatePlayUI();
-  setStatus('error', '连接失败 · 点按重试');
-  toast(isVod() ? '点播连接失败：可能是网络问题或音源已失效' : '直播连接失败：可能是网络问题或地址已失效');
+  setStatus('error', '直播暂时不通 · 自动重试中');
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    if (!shouldPlay || token !== playToken) return;
+    handleStreamError();
+  }, RETRY_FOREVER_MS);
 }
 
 /* ---------------- 锁屏 / 蓝牙控制 ---------------- */
@@ -1693,13 +1760,14 @@ function updateMediaSession() {
       { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png' },
       { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' },
     ];
-    // 单曲：锁屏上要显示「点的这首歌」+ 歌手 + 谁点的送给谁（不是台名）
-    navigator.mediaSession.metadata = new MediaMetadata(vod ? {
-      title: vod.title,
-      artist: vod.artist || (vod.from ? vod.from + ' 点播' : '在线点歌'),
-      album: '拾光电台 FM89.1' + (vod.from
-        ? ' · ' + vod.from + '点的' + (vod.to ? '，送给' + vod.to : '')
-        : ''),
+    // 锁屏显示「正在放的这首」：手动单曲优先，否则 air 里那首
+    const now = vod || (airInfo && airInfo.title ? airInfo : null);
+    navigator.mediaSession.metadata = new MediaMetadata(now ? {
+      title: now.title,
+      artist: now.artist || (now.from ? now.from + ' 点播' : '拾光电台 DJ'),
+      album: '拾光电台 FM89.1' + (now.from
+        ? ' · ' + now.from + '点的' + (now.to ? '，送给' + now.to : '')
+        : ' · 直播中'),
       artwork: artwork,
     } : {
       title: nowTitle || s.name,
@@ -1707,9 +1775,11 @@ function updateMediaSession() {
       album: nowTitle ? '拾光电台 FM89.1 · ' + s.name : '拾光电台 FM89.1',
       artwork: artwork,
     });
-    navigator.mediaSession.setActionHandler('play', () => { if (!shouldPlay) togglePlay(); });
-    navigator.mediaSession.setActionHandler('pause', () => { userPaused = true; pause(); });
-    // 上一首/下一首随电台台单一并移除：云开播不支持手动切歌
+    navigator.mediaSession.setActionHandler('play', () => { startStream(); });
+    /* 直播没有暂停：把 pause 动作整个摘掉（而不是留个 no-op），
+     * 这样锁屏/耳机上不会出现「有暂停键却按了没反应」的假象。 */
+    try { navigator.mediaSession.setActionHandler('pause', null); } catch (_) { /* 忽略 */ }
+    // 上一首/下一首：云开播不支持手动切歌
     navigator.mediaSession.setActionHandler('previoustrack', null);
     navigator.mediaSession.setActionHandler('nexttrack', null);
   } catch (_) {
@@ -1731,22 +1801,23 @@ window.__onIcyTitle = function (title) {
   updateMediaSession();
 };
 
-/* 锁屏通知的播放/暂停按钮 → 原生 MediaSession 回调进入这里 */
-window.__svcResume = function () { if (!shouldPlay) togglePlay(); };
-window.__svcPause = function () { userPaused = true; pause(); };
+/* 锁屏通知 / 蓝牙耳机的控制键 → 原生 MediaSession 回调进入这里。
+ * v1.20 直播没有暂停：暂停一律忽略（音频照常播），播放 = 接上直播。 */
+window.__svcResume = function () { startStream(); };
+window.__svcPause = function () {
+  /* 故意留空：直播不可暂停。若这里调 pause()，用户切歌/来电话一打断，
+   * 电台就再也不出声了 —— 正是这次要根治的「间歇性」。 */
+};
 
 /* ---------------- 事件绑定 ---------------- */
-playBtn.addEventListener('click', togglePlay);
+if (playBtn) playBtn.addEventListener('click', togglePlay);   // 旧版 HTML 才有播放键
 wireVodSeek();
-// 云同步开播条：点一下加入此刻的开播（全网同一时刻听同一段，像真电台）
+// 直播接入条：正常连上时隐藏；露出来（自动播放被拦 / 断线待救）时点它接上
 const airBarEl = $('airBar');
 if (airBarEl) {
   airBarEl.addEventListener('click', () => {
-    /* 不预置 following：air 还没到（消息 1~3 秒才来）时点它，旧写法把
-     * following 永久置位后 playAirNow 静默返回，之后 onAir 的自动加入
-     * 闸门永久跳过 = 打开永远没声（v1.19 真机踩过）。 */
-    if (!airInfo) { toast('开播马上就来，稍等一下 🎵'); return; }
-    playAirNow();
+    toast('正在接上直播…');
+    startStream();
   });
 }
 
@@ -1783,6 +1854,12 @@ function icyYield(yieldNow) {
 
 audio.addEventListener('playing', () => {
   retries = 0;
+  /* 这条线出声了 → 记住它，并把失败计数归零：下一次重连**先试刚成功的这条**，
+   * 不要从计数残值里挑一条（直连好好的却被丢去有 8s 停顿的隧道，就是这么来的）。 */
+  if (!isVod()) {
+    streamFailover = 0;
+    streamLastGoodTunnel = streamAttemptTunnel;
+  }
   switchUntil = 0;        // 新源已出声 → 换源窗口结束，后续事件正常处理
   disarmStallWatchdog();
   setStatus('live', isVod() ? '播放中' : '直播中');
@@ -1841,34 +1918,29 @@ audio.addEventListener('timeupdate', () => { if (isVod()) renderVodProgress(); }
 audio.addEventListener('loadedmetadata', () => { if (isVod()) renderVodProgress(); });
 
 audio.addEventListener('ended', () => {
-  if (!isVod()) return;
-
-  /* 跟播（云开播成片）播完 = 等导播切下一首：服务器按 start+dur+2 秒
-   * 必发新 air，onAir 的 changed && !userPaused 分支会自动接棒。
-   * 保住 shouldPlay 是命门 —— 旧版在这里一刀切 false，换歌指令到了
-   * 也因为「接棒要 shouldPlay」而永不接，表现就是真机踩过的
-   * 「播完就停，别人点的歌全要手动播」。 */
-  if (following) {
-    retries = 0;
-    clearTimeout(retryTimer);
-    retryTimer = null;
-    disarmStallWatchdog();
-    setStatus('loading', '马上切下一首…');
-    updatePlayUI();
+  /* v1.20：直播流正常情况下永远播不完。真触发了 ended = 服务端把连接
+   * 关了（重启 / 换隧道域名 / 流被代理掐断）—— 必须自动接上，否则就停在
+   * 没声的状态。这就是「断流自动重连」的最后一环（error 走 handleStreamError，
+   * 干净的 EOF 只会走到这里）。 */
+  if (!isVod()) {
+    if (shouldPlay) {
+      setStatus('loading', '重新接通直播…');
+      handleStreamError();
+    }
     return;
   }
 
   // 手动单曲：维持「播完了」语义。
   // 不清 vod：还留在单曲模式，按播放键可以从头再放一遍。
-  // 必须把 shouldPlay 置 false —— 否则按钮仍是"暂停"态，再点一下
-  // togglePlay 会走成 pause()，用户点了播放反而停下来。
+  // 必须把 shouldPlay 置 false —— 否则再点一下 togglePlay 会走成重连，
+  // 用户点了播放反而不是他要的。
   shouldPlay = false;
   retries = 0;
   clearTimeout(retryTimer);
   retryTimer = null;
   disarmStallWatchdog();
   updatePlayUI();
-  setStatus('', '播完了 · 点播放再听一遍');
+  setStatus('', '播完了 · 点「接上」再听一遍');
   renderVodProgress();
 });
 
@@ -1997,11 +2069,18 @@ if (cat !== 'all' && visibleIdx().indexOf(index) < 0) {
 }
 renderCats();          // 台单已下架：元素不存在时直接返回
 renderStations();      // 同上，保留调用不报错
-updateNowPlaying();    // 待机文案：拾光点播台
-setStatus('', '点一首歌，云端主播放给你听');
+updateNowPlaying();    // 品牌待机文案：拾光点播台
 updatePlayUI();
+/* v1.20：打开就接上直播（收音机拧开就有声）。旧版要等首条 air 消息来才
+ * 自动加入 —— 现在音频是服务器连续推的流，连上就在播，air 只负责改界面。
+ * 首连走直连地址；连不上由 handleStreamError 轮换到隧道重试。 */
+startStream();
 // 不再拉取蜻蜓官方频道人数（onStationChanged 已随台单停用）
-setInterval(renderAirBar, 4000);   // 换歌间隙/停播时开播条要跟着消失或恢复
+// 1 秒一跳：直播进度按 air.startedAt 自己走；开播条跟着「连没连上」露/藏
+setInterval(() => {
+  renderAirBar();
+  if (airProgress && !vod) renderVodProgress();
+}, 1000);
 
 /* ---------------- Service Worker（网页版自动热更新） ---------------- */
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
@@ -2062,7 +2141,7 @@ function currentVersion() {
       if (v) return v;
     }
   } catch (_) { /* 忽略 */ }
-  return '1.19.2'; // 网页版：与 manifest versionName 同步维护
+  return '1.20.0'; // 网页版：与 manifest versionName 同步维护
 }
 
 let updateUrl = '';
@@ -2416,7 +2495,9 @@ window.__radio = {
    * 是否自动跟播/露出「一起听」条 */
   onAir: (body) => onAir(body),
   airInfo: () => airInfo,
-  following: () => following,
+  /* 「是否正在跟播」的对外读数：v1.20 没有跟播开关了，
+   * 只要直播流连着就算在听。 */
+  following: () => shouldPlay,
   /* 云端音源地址的 origin：点歌台用它拉 /catalog.json（曲库联想 + AI 祝福词） */
   origin: () => {
     try {
