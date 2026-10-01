@@ -804,6 +804,7 @@
     const reqMsg = $('reqMsg');     // 祝福语（选填，云端 AI 朗读拼在歌前面）
     const reqBless = $('reqBless'); // AI 帮写祝福（按歌名从词本挑）
     const reqClose = $('reqClose');
+    const reqX = $('reqX');           // 标题行常驻 ✕（用户反馈「返回按钮都没有」加的）
     const nickInput = $('nickInput');
     let nickTimer = null;
 
@@ -818,9 +819,34 @@
       setTimeout(() => { try { reqInput && reqInput.focus(); } catch (_) { /* 忽略 */ } }, 60);
     }
     function close() { if (reqMask) reqMask.hidden = true; }
+    /* 安卓返回键要能先关弹窗。以前 MainActivity 里 canGoBack() 恒为 false（只有一个
+     * file:// 页面），返回键直接 super.onBackPressed() 把 App 关了 —— 点歌台开着
+     * 的时候按返回＝退出，用户以为按钮坏了。MainActivity 通过 evaluateJavascript
+     * 调这两个函数，true 表示「我处理了，你别退」。 */
+    function hasOpenDialog() {
+      try {
+        if (reqMask && !reqMask.hidden) return true;
+        const upd = document.getElementById('updMask');
+        if (upd && !upd.hidden) return true;
+      } catch (_) { /* 忽略 */ }
+      return false;
+    }
+    function backPressed() {
+      // 有联想下拉先收下拉，再收弹窗：跟系统返回的逐层收一致
+      try {
+        const ac = document.getElementById('reqAc');
+        if (ac && !ac.hidden) { ac.hidden = true; return true; }
+      } catch (_) { /* 忽略 */ }
+      if (!hasOpenDialog()) return false;
+      close();
+      return true;
+    }
+    window.__fm891BackPressed = backPressed;
+    window.__fm891HasOpenDialog = hasOpenDialog;
 
     if (djBubble) djBubble.addEventListener('click', open);
     if (reqClose) reqClose.addEventListener('click', close);
+    if (reqX) reqX.addEventListener('click', close);
     if (reqMask) {
       // 点遮罩关闭；点卡片内部不要关（否则输入到一半就没了）
       reqMask.addEventListener('click', (e) => { if (e.target === reqMask) close(); });

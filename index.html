@@ -116,7 +116,13 @@
 
   <div class="dialog-mask" id="reqMask" hidden>
     <div class="dialog req-dialog" role="dialog" aria-modal="true" aria-labelledby="reqTitle">
-      <h3 id="reqTitle">🎧 在线点歌</h3>
+      <!-- 标题行：右边常驻一个 ✕。以前退出只能靠底部那个「收起」，而弹窗没有
+           max-height 也不滚动，点几首歌后队列把弹窗撑出屏幕，那个按钮被顶到
+           屏幕外 —— 用户反馈「点完后返回按钮都没有」，等于被困在点歌台里。 -->
+      <div class="dialog-head">
+        <h3 id="reqTitle">🎧 在线点歌</h3>
+        <button class="dialog-x" id="reqX" type="button" aria-label="收起点歌台">✕</button>
+      </div>
       <form class="req-form" id="reqForm" autocomplete="off">
         <!-- 输入联动联想：打「你的」下拉弹《你的选择》，曲库速点一键填 -->
         <div class="ac-wrap">

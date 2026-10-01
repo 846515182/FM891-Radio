@@ -90,13 +90,28 @@ public class MainActivity extends Activity {
         webView.loadUrl("file:///android_asset/index.html");
     }
 
+    /* 返回键先交给页面：点歌台 / 更新弹窗开着的时候，返回应该是「关掉它」，
+     * 而不是把 App 退掉 —— 只有一个 file:// 页面，canGoBack() 恒为 false，
+     * 以前按返回直接退出，用户以为返回按钮坏了。
+     * evaluateJavascript 是异步的，这里同步返回 true 表示「页面会自己处理」，
+     * 若它拒绝（页面没接住）再走原来的 canGoBack 分支。 */
     @Override
     public void onBackPressed() {
-        if (webView != null && webView.canGoBack()) {
-            webView.goBack();
-        } else {
-            super.onBackPressed();
+        if (webView != null) {
+            webView.evaluateJavascript(
+                    "(function(){try{return !!(window.__fm891BackPressed&&window.__fm891BackPressed());}catch(e){return false;}})()",
+                    value -> {
+                        if (!"true".equals(value == null ? "" : value.trim())) {
+                            if (webView != null && webView.canGoBack()) {
+                                webView.goBack();
+                            } else {
+                                MainActivity.super.onBackPressed();
+                            }
+                        }
+                    });
+            return;
         }
+        super.onBackPressed();
     }
 
     @Override
