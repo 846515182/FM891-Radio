@@ -1450,3 +1450,49 @@ footer { margin-top: 14px; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* ============ 候选版本：让用户自己挑哪一版 ============
+ * 「点的歌没有一首是对的版本」—— 机器猜不准哪条是原唱，那就把 bot 那一页
+ * 原样列出来让他点。选不选都行：45 秒没人点就按推荐那版继续，不卡住流程。 */
+.req-cands {
+  display: block;
+  margin: 7px 0 2px 24px;
+}
+.req-cands-h {
+  display: block;
+  font-size: 10px;
+  color: var(--muted);
+  opacity: .75;
+  margin-bottom: 5px;
+}
+.req-cands-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.req-cand {
+  max-width: 100%;
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, .16);
+  background: rgba(255, 255, 255, .05);
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.4;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.req-cand:active { transform: scale(0.96); }
+.req-cand.best {
+  border-color: rgba(34, 211, 238, .55);
+  background: rgba(34, 211, 238, .12);
+}
+.req-cand.on {
+  border-color: rgba(236, 72, 152, .8);
+  background: rgba(236, 72, 152, .22);
+  box-shadow: 0 0 10px rgba(236, 72, 152, .35);
+  font-weight: 700;
+}

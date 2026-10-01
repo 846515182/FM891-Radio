@@ -268,15 +268,36 @@
       /* miss（云端没找到）也在白名单里：以前这一档不在，未知 stage 一律被当成
        * search，服务器如实报了「没找到」客户端照样显示「找歌中」—— 用户只
        * 知道自己点的歌永远在找，不知道是找不到、也不知道能换一首。 */
-      const stages = ['search', 'download', 'transcode', 'merge', 'miss'];
+      const stages = ['search', 'download', 'transcode', 'merge', 'miss', 'cands'];
       const stage = stages.indexOf(msg.stage) >= 0 ? msg.stage : 'search';
-      prog.set(id, {
+      const rec = {
         stage: stage,
         done: Math.max(0, Number(msg.done) || 0),
         total: Math.max(0, Number(msg.total) || 0),
         eta: Math.max(0, Number(msg.eta) || 0),
         ts: Number(msg.ts) || Date.now(),
-      });
+      };
+      /* 候选版本（服务器把 bot 那一页原样下发）。挂到条目上，渲染时列出来
+       * 让用户点 —— 机器猜不准哪条是原唱，那就让用户自己挑。 */
+      if (Array.isArray(msg.cands)) {
+        rec.cands = msg.cands
+          .filter((c) => c && c.n)
+          .slice(0, 8)
+          .map((c) => ({ n: String(c.n), t: String(c.t || '').slice(0, 40), best: !!c.best }));
+      }
+      prog.set(id, rec);
+      /* 候选挂到条目上（渲染要用）。挂完重画一次，列表里立刻能点版本。 */
+      if (rec.cands && rec.cands.length > 1) {
+        const ci = items.get(id);
+        if (ci) {
+          const sig = rec.cands.map((c) => c.n + ':' + c.t).join('|');
+          if (String(ci.candsSig || '') !== sig) {
+            ci.cands = rec.cands;
+            ci.candsSig = sig;
+            render();
+          }
+        }
+      }
       /* 「没找到」是**结论**不是进度：进度只有 6 分钟新鲜度，过了就退回
        * 「云端还在找」。所以它要落进条目自己的状态里，才留得住。 */
       if (stage === 'miss') {
@@ -314,6 +335,7 @@
     }
 
     function progLabel(p) {
+      if (p.stage === 'cands') return { text: '选一个版本 ↓', cls: 'st-search' };
       if (p.stage === 'miss') return { text: '没找到这首歌 · 换一首吧', cls: 'st-miss' };
       if (p.stage === 'merge') return { text: '云端合成播报中…', cls: 'st-search' };
       if (p.stage === 'transcode') return { text: '转码中… 马上就好', cls: 'st-search' };
@@ -461,6 +483,19 @@
     let brokerIdx = 0;
     let myTopic = '';
     let snapTimer = null;
+
+    /* 用户挑版本：把编号写回条目并发布。服务器那边 find_and_download 正在
+     * 等这个字段（见服务端 PICK_WAIT），所以点了哪条就下哪条；没人点就按推荐。 */
+    function pickVersion(it, n) {
+      if (!it || !n) return;
+      const num = String(n);
+      if (String(it.pick || '') === num) return;
+      it.pick = num;
+      it.ver = (it.ver || 0) + 1;      // ver 必须涨，否则对端手里那份会盖回来
+      publish(true);
+      render();
+      say('好，就下第 ' + num + ' 版');
+    }
 
     function publish(force) {
       const fp = fingerprint();
@@ -619,6 +654,34 @@
         li.appendChild(num);
         li.appendChild(body);
         li.appendChild(st);
+        /* 候选版本：服务器把 bot 那一页原样下发，让用户自己挑哪一版。
+         * 「点的歌没有一首是对的版本」—— 机器猜不准哪条是原唱，那就别猜了。 */
+        if (it.cands && it.cands.length > 1 && !it.del && it.st !== 'ready') {
+          const cbox = document.createElement('span');
+          cbox.className = 'req-cands';
+          const chint = document.createElement('small');
+          chint.className = 'req-cands-h';
+          chint.textContent = '挑一个版本（不挑就用推荐那版）';
+          cbox.appendChild(chint);
+          const strip = document.createElement('span');
+          strip.className = 'req-cands-strip';
+          it.cands.forEach((cd) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'req-cand'
+              + (String(it.pick || '') === String(cd.n) ? ' on' : '')
+              + (cd.best ? ' best' : '');
+            btn.textContent = cd.n + '. ' + cd.t;
+            btn.title = cd.t;
+            btn.addEventListener('click', (ev) => {
+              ev.stopPropagation();
+              pickVersion(it, cd.n);
+            });
+            strip.appendChild(btn);
+          });
+          cbox.appendChild(strip);
+          li.appendChild(cbox);
+        }
         frag.appendChild(li);
       });
       reqList.innerHTML = '';
