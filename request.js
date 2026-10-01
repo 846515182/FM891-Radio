@@ -340,6 +340,23 @@
       return true;
     }
 
+    /* v1.20.8：点歌的**每个环节**都要看得见（用户：「点歌每个环节显示进度」）。
+ * 以前只有一行文字（「下载中 3/5 MB」），用户不知道现在卡在哪一步、还剩几步。
+ * 这里把进度拆成固定的几步，每步有名字，条目里渲染成一条带节点的小进度条，
+ * 走到哪一步哪一步就亮 —— 点完歌之后不用猜，能盯着它一步步走完。 */
+    const STEP_NAMES = ['已提交', '全网找歌', '选版本', '下载', '云端合成', '备好'];
+    const STAGE_STEP = {
+      search: 1, cands: 2, download: 3, merge: 4, transcode: 4, ready: 5,
+    };
+
+    function stepOf(it) {
+      if (it.st === 'ready' || it.st === 'onair') return 5;
+      const p = (prog && prog[it.id]) || null;
+      const s = p && p.stage;
+      if (s) return STAGE_STEP[s] != null ? STAGE_STEP[s] : 1;
+      return 0;   // 刚提交，还在等云端接单
+    }
+
     function progLabel(p) {
       if (p.stage === 'cands') return { text: '选一个版本 ↓', cls: 'st-search' };
       if (p.stage === 'miss') return { text: '没找到这首歌 · 换一首吧', cls: 'st-miss' };
@@ -665,6 +682,21 @@
         li.appendChild(num);
         li.appendChild(body);
         li.appendChild(st);
+
+        /* v1.20.8：分环节进度条。走到哪一步哪一步就亮，条目自己会更新。
+         * miss / 备好 / 已删除就不画了（没进度可言）。 */
+        if (!it.del && it.st !== 'miss') {
+          const step = stepOf(it);
+          const bar = document.createElement('span');
+          bar.className = 'req-steps';
+          STEP_NAMES.forEach((nm, k) => {
+            const s = document.createElement('i');
+            s.className = 'req-step' + (k <= step ? ' on' : '') + (k === step ? ' now' : '');
+            s.textContent = nm;
+            bar.appendChild(s);
+          });
+          li.appendChild(bar);
+        }
         /* 候选版本：服务器把 bot 那一页原样下发，让用户自己挑哪一版。
          * 「点的歌没有一首是对的版本」—— 机器猜不准哪条是原唱，那就别猜了。 */
         if (it.cands && it.cands.length > 1 && !it.del && it.st !== 'ready') {
@@ -811,7 +843,7 @@
     function open() {
       if (!reqMask) return;
       reqMask.hidden = false;
-      ensureCatalog();   // 打开就绪曲库：联想 / 速点 / AI 祝福都靠它
+      ensureCatalog(true);   // 强制重拉：祝福候选是服务端随机摇的（见 ensureCatalog 说明）
       render();
       renderChips();
       // 每次打开回填当前昵称：用户可能在别处改过，或本地被清过
@@ -847,6 +879,42 @@
     if (djBubble) djBubble.addEventListener('click', open);
     if (reqClose) reqClose.addEventListener('click', close);
     if (reqX) reqX.addEventListener('click', close);
+
+    /* 抽屉往下滑就关（用户反馈「不要那个框很烦人」—— 既然是抽屉，就得能用
+     * 甩手势退出去，不能逼用户去找 ✕）。手势绑在抓手和遮罩空白处：抽屉内部
+     * 不绑，否则跟队列列表的纵向滚动打架。 */
+    (function bindSheetSwipe() {
+      const grip = $('reqGrip');
+      if (!grip || !reqMask) return;
+      let y0 = 0; let on = false; let moved = false;
+      const start = (e) => {
+        const t = (e.touches && e.touches[0]) || e;
+        y0 = t.clientY; on = true; moved = false;
+      };
+      const move = (e) => {
+        if (!on) return;
+        const t = (e.touches && e.touches[0]) || e;
+        const dy = t.clientY - y0;
+        if (dy <= 0) return;
+        moved = true;
+        // 跟手：往下拖多少就跟着走多少（最多 120px），松手过了 64px 就关
+        try { reqMask.firstElementChild.style.transform = 'translateY(' + Math.min(dy, 120) + 'px)'; } catch (_) { /* 忽略 */ }
+        if (e.cancelable) e.preventDefault();
+      };
+      const end = (e) => {
+        if (!on) return;
+        on = false;
+        const t = (e.changedTouches && e.changedTouches[0]) || e;
+        const dy = (t ? t.clientY : y0) - y0;
+        try { reqMask.firstElementChild.style.transform = ''; } catch (_) { /* 忽略 */ }
+        if (moved && dy > 64) close();
+      };
+      grip.addEventListener('touchstart', start, { passive: true });
+      grip.addEventListener('touchmove', move, { passive: false });
+      grip.addEventListener('touchend', end);
+      // 抓手也能点一下就关（等价于「这玩意儿可以拖走」的提示）
+      grip.addEventListener('click', () => { if (!moved) close(); });
+    }());
     if (reqMask) {
       // 点遮罩关闭；点卡片内部不要关（否则输入到一半就没了）
       reqMask.addEventListener('click', (e) => { if (e.target === reqMask) close(); });
@@ -925,10 +993,14 @@
       return '';
     }
 
-    function ensureCatalog() {
+    function ensureCatalog(force) {
       const base = catOrigin();
       if (!base) return;
-      if (catalog.length && base === lastOrigin) return;
+      /* force：每次打开点歌台都重新拉一次。原因：catalog.json 里的 bless 是
+       * 服务端**随机摇**的（每 20 分钟重摇一遍），而这里以前只要 catalog 非空
+       * 就直接 return —— 结果整晚都吃同一份缓存，用户连点几首每首的「AI 写祝福」
+       * 都一样，原话「咋每首歌都一样」。重拉一份几十 KB，值。 */
+      if (catalog.length && base === lastOrigin && !force) return;
       if (catTimer) return;            // 4 秒防抖，避免连打请求
       lastOrigin = base;
       catTimer = setTimeout(() => { catTimer = null; }, 4000);

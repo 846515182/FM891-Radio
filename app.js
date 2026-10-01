@@ -1172,7 +1172,10 @@ function updatePlayUI() {
     playBtn.classList.toggle('is-playing', playing);
     playBtn.setAttribute('aria-label', playing ? '直播中' : '播放');
   }
-  $('liveDot').hidden = !playing;
+  /* v1.20.9：「开播中」徽章撤了（用户：开播中也删掉）。元素已从 HTML 删掉，
+   * 这里必须判空 —— 直接 $('liveDot').hidden 会 TypeError 把整个 UI 打断。 */
+  const dot = $('liveDot');
+  if (dot) dot.hidden = !playing;
   if ('mediaSession' in navigator) {
     try { navigator.mediaSession.playbackState = playing ? 'playing' : 'paused'; } catch (_) { /* 忽略 */ }
   }
@@ -1585,40 +1588,53 @@ function renderNowPlaying(j) {
  * 垫场在后）。刚备好的点歌会被插到下一首 —— 就是在这里冒出来的。
  * 单曲模式下不显示：那会儿耳朵里是单曲，混着电台歌单只会更乱。 */
 function renderUpNext(list) {
-  const box = $('upNext');
-  const strip = $('upNextList');
+  /* v1.20.9：排队列表从底部那条横滑搬到左边一栏透明列表
+   * （用户：中间左边透明显示排队列表，下面就不要显示了）。 */
+  const box = $('queueRail');
+  const strip = $('queueRailList');
+  const empty = $('queueRailEmpty');
   if (!box || !strip) return;
   const arr = Array.isArray(list) ? list.filter((x) => x && x.title).slice(0, 5) : [];
-  if (!arr.length || vod) { box.hidden = true; return; }
-  const sig = arr.map((x) => String(x.id || x.title)).join('|');
-  if (strip.getAttribute('data-sig') === sig) return;   // 同一份别重画，别打断正在滑的列表
+  /* 正在播的那一首不该再出现在「排队」里 —— 截图里《秋天不回来》正在播，
+     队列 #1 也是它，同一首歌占两格，看着就是 bug。左栏只放 4 条：
+     放不下就该省略，也不要溢出到正文下面被盖住。 */
+  const cur = (airInfo && airInfo.id) || '';
+  const queue = arr.filter((x) => !cur || String(x.id || '') !== String(cur)).slice(0, 4);
+  if (!queue.length || vod) {
+    box.hidden = true;
+    return;
+  }
+  const sig = queue.map((x) => String(x.id || x.title)).join('|');
+  if (strip.getAttribute('data-sig') === sig) return;   // 同一份别重画
   strip.setAttribute('data-sig', sig);
   strip.textContent = '';
-  arr.forEach((it, i) => {
-    const cell = document.createElement('div');
-    cell.className = 'upnext-item' + (it.lib ? ' lib' : '');
+  queue.forEach((it, i) => {
+    const li = document.createElement('li');
+    li.className = 'q-item' + (it.lib ? ' lib' : '');
     const no = document.createElement('span');
-    no.className = 'upnext-no';
+    no.className = 'q-no';
     no.textContent = String(i + 1);
     const main = document.createElement('span');
-    main.className = 'upnext-main';
+    main.className = 'q-main';
     const b = document.createElement('b');
-    b.textContent = String(it.title || '').slice(0, 24);
-    const s = document.createElement('small');
-    s.textContent = it.artist ? String(it.artist).slice(0, 16)
-      : (it.lib ? '电台垫场' : '正在准备');
+    b.textContent = String(it.title || '').slice(0, 10);
     main.appendChild(b);
-    main.appendChild(s);
-    cell.appendChild(no);
-    cell.appendChild(main);
-    if (it.who && !it.lib) {
-      const w = document.createElement('span');
-      w.className = 'upnext-who';
-      w.textContent = String(it.who).slice(0, 8) + ' 点的';
-      cell.appendChild(w);
+    if (it.artist) {
+      const a = document.createElement('small');
+      a.className = 'q-artist';
+      a.textContent = String(it.artist).slice(0, 8);
+      main.appendChild(a);
     }
-    strip.appendChild(cell);
+    const s = document.createElement('small');
+    s.className = 'q-state';
+    s.textContent = it.lib ? '电台垫场'
+      : (it.who ? String(it.who).slice(0, 6) + ' 点的' : '正在准备');
+    main.appendChild(s);
+    li.appendChild(no);
+    li.appendChild(main);
+    strip.appendChild(li);
   });
+  if (empty) empty.hidden = arr.length > 0;
   box.hidden = false;
 }
 
@@ -2210,7 +2226,7 @@ function currentVersion() {
       if (v) return v;
     }
   } catch (_) { /* 忽略 */ }
-  return '1.20.6'; // 网页版：与 manifest versionName 同步维护
+  return '1.20.9'; // 网页版：与 manifest versionName 同步维护
 }
 
 let updateUrl = '';

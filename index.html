@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#0b0718" />
-  <title>拾光电台 FM89.1</title>
-  <meta name="description" content="拾光电台 FM89.1 — 拾起耳朵里的好时光，云端点播电台" />
+  <title>时光电台</title>
+  <meta name="description" content="时光电台 · 拾起耳朵里的好时光" />
 
   <link rel="manifest" href="manifest.json" />
   <link rel="icon" type="image/png" href="icons/icon-192.png" />
@@ -13,7 +13,7 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="拾光电台" />
+  <meta name="apple-mobile-web-app-title" content="时光电台" />
 
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -21,20 +21,25 @@
   <div class="bg-glow" aria-hidden="true"></div>
 
   <main class="app">
+    <!-- v1.20.8：台标回左上角角标，徽章（开播中/在线/曲库）全撤。
+         用户原话「把曲库删掉 在线人数也删掉 开播中也删掉 那个头像位置改在左上角」。
+         电台该有的样子：一个角标 + 一首歌 + 排队的人，别堆仪表盘。 -->
     <header class="top">
       <div class="brand">
-        <img class="brand-avatar" src="icons/icon-192.png" alt="拾光电台" />
-        <span class="brand-logo">拾光<span>FM89.1</span></span>
-        <span class="live-dot" id="liveDot" hidden>● 开播中</span>
+        <img class="brand-avatar" src="icons/dj-avatar.png" alt="时光电台" />
+        <span class="brand-logo">时光电台</span>
       </div>
       <p class="slogan">拾起耳朵里的好时光 · MUSIC RADIO</p>
-      <div class="pill-row">
-        <div class="online-pill" id="onlinePill" hidden aria-live="polite">🎧 在线 <b id="onlineCount">–</b> 人<i class="src" id="onlineSrc" hidden>官方</i></div>
-        <div class="lib-pill" id="libPill" hidden>📚 曲库 <b id="libCount">–</b> 首</div>
-      </div>
     </header>
 
     <section class="player" aria-label="播放器">
+      <!-- 排队列表搬到左边一栏（透明），下面那一整块删掉（用户：下面就不要显示了） -->
+      <aside class="queue-rail" id="queueRail" hidden aria-label="排队">
+        <div class="queue-rail-h">排 队</div>
+        <ol class="queue-rail-list" id="queueRailList"></ol>
+        <p class="queue-rail-empty" id="queueRailEmpty">还没人排队</p>
+      </aside>
+
       <div class="stage">
         <div class="cover" id="cover">
           <span class="status" id="status">正在接通直播…</span>
@@ -45,7 +50,7 @@
           <div class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
         </div>
 
-        <h1 id="stationName">拾光点播台</h1>
+        <h1 id="stationName">时光电台</h1>
         <p class="now-artist" id="nowArtist" hidden></p>
         <p class="desc" id="stationDesc">点一首歌，云端主播放给你听</p>
         <p class="now-title" id="nowTitle"></p>
@@ -58,13 +63,6 @@
         <span class="vod-time" id="vodCur">0:00</span>
         <span class="vod-track" id="vodTrack" role="slider" aria-label="播放进度" tabindex="0"><i id="vodPct"></i></span>
         <span class="vod-time" id="vodDur">--:--</span>
-      </div>
-
-      <!-- 接下来：服务器在 air 消息里带 next（最多 5 首，按轮播顺序，
-           点歌排在最前）。电台该有的歌单 —— 以前只能看「此刻在放」。 -->
-      <div class="upnext" id="upNext" hidden>
-        <div class="upnext-h"><span>接下来</span><i class="upnext-tip">左右滑动</i></div>
-        <div class="upnext-strip" id="upNextList"></div>
       </div>
 
       <section class="volume" aria-label="音量">
@@ -89,7 +87,7 @@
     </section>
 
     <footer>
-      拾光电台 FM89.1 · 拾起耳朵里的好时光<br />
+      时光电台 · 拾起耳朵里的好时光<br />
       <button class="link-btn" id="checkUpdateBtn" type="button">
         检查更新 · <span id="verLabel">v…</span>
       </button>
@@ -116,6 +114,9 @@
 
   <div class="dialog-mask" id="reqMask" hidden>
     <div class="dialog req-dialog" role="dialog" aria-modal="true" aria-labelledby="reqTitle">
+      <!-- 抓手：点歌台现在是贴底的抽屉（用户反馈「不要那个框」）。抓手能拖，
+           配上下滑关闭手势，不用去找那个 ✕。 -->
+      <div class="dialog-grip" id="reqGrip" aria-hidden="true"><i></i></div>
       <!-- 标题行：右边常驻一个 ✕。以前退出只能靠底部那个「收起」，而弹窗没有
            max-height 也不滚动，点几首歌后队列把弹窗撑出屏幕，那个按钮被顶到
            屏幕外 —— 用户反馈「点完后返回按钮都没有」，等于被困在点歌台里。 -->
@@ -130,13 +131,18 @@
           <ul class="ac-list" id="reqAc" hidden></ul>
         </div>
         <div class="req-chips" id="reqChips" hidden></div>
-        <input id="reqTo" type="text" placeholder="送给谁（选填）" maxlength="16" />
-        <div class="msg-row">
-          <textarea id="reqMsg" rows="2" maxlength="60"
-                    placeholder="祝福语 / 内心独白（选填，AI 会朗读播报）"></textarea>
-          <button class="ghost bless-btn" id="reqBless" type="button">✨ AI 写祝福</button>
-        </div>
         <button class="primary" id="reqGo" type="submit">点歌</button>
+        <!-- 「送给谁 / 祝福语」折起来：默认没人要填，每次都摆着两个输入框
+             是这个面板显得又高又烦的主因（用户反馈「不要那个框」）。 -->
+        <details class="req-more">
+          <summary>🎀 加一句想说的（选填）</summary>
+          <input id="reqTo" type="text" placeholder="送给谁（选填）" maxlength="16" />
+          <div class="msg-row">
+            <textarea id="reqMsg" rows="2" maxlength="60"
+                      placeholder="祝福语 / 内心独白（AI 会朗读播报）"></textarea>
+            <button class="ghost bless-btn" id="reqBless" type="button">✨ AI 写祝福</button>
+          </div>
+        </details>
       </form>
       <p class="req-sum" id="reqSum" hidden></p>
       <p class="req-hint" id="reqHint"></p>

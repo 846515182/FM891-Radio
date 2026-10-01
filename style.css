@@ -616,19 +616,20 @@ footer {
   text-decoration: underline dotted;
 }
 
+/* —— v1.20.7 点歌台：别再是个居中大框，改成贴底抽屉 ——
+   用户原话「点歌 选歌 不要那个框很烦人」。以前是 360px 宽的居中卡片压在
+   电台画面上，上下都被遮、还要点两次才能退出。现在贴底、只占下面那块，
+   主界面一直看得见；遮罩也淡了。 */
 .dialog-mask {
   position: fixed;
   inset: 0;
   z-index: 60;
-  background: rgba(5, 3, 14, 0.72);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  /* 淡很多：以前 0.72 + blur(4px) 把整台糊掉，看着就是「被关起来了」 */
+  background: rgba(5, 3, 14, 0.42);
   display: flex;
-  /* 底部弹出（手机上的常规形态），并且遮罩本身可滚 —— 以前是 align-items:center
-     且弹窗无 max-height，内容一超屏就上下同时被裁，fixed 定位下滚都滚不到。 */
   align-items: flex-end;
   justify-content: center;
-  padding: 16px 12px calc(16px + env(safe-area-inset-bottom));
+  padding: 0;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
@@ -636,19 +637,42 @@ footer {
 .dialog-mask[hidden] { display: none; }
 
 .dialog {
-  width: min(360px, 92vw);
-  /* 内容再长也只在弹窗内部滚动，标题（带 ✕）和底部按钮永远在屏内、滚得到 */
-  max-height: calc(100vh - 32px);
-  max-height: calc(100dvh - 32px);
+  width: 100%;
+  /* 内容再长也只在抽屉内部滚动，标题（带 ✕）和底部按钮永远在屏内、滚得到 */
+  max-height: 76vh;
+  max-height: 76dvh;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
-  border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  background: linear-gradient(165deg, #1e1547, #150e31);
-  padding: 16px 16px 14px;
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6), 0 0 60px rgba(139, 92, 246, 0.25);
-  animation: fadeUp 0.25s ease both;
+  /* 只有上面两个角圆，下面贴边 —— 抽屉感，不是「一张卡片」 */
+  border-radius: 20px 20px 0 0;
+  border: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+  background: linear-gradient(180deg, #241a4f 0%, #150e31 62%);
+  padding: 4px 16px calc(12px + env(safe-area-inset-bottom));
+  box-shadow: 0 -18px 46px rgba(0, 0, 0, 0.5), 0 -1px 0 rgba(167, 139, 250, 0.35);
+  animation: sheetUp 0.22s cubic-bezier(0.22, 0.9, 0.3, 1) both;
+}
+
+@keyframes sheetUp {
+  from { transform: translateY(14%); opacity: 0.4; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* 抓手：告诉用户这玩意儿能往下拖走 */
+.dialog-grip {
+  display: flex;
+  justify-content: center;
+  padding: 7px 0 3px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.dialog-grip i {
+  width: 38px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
 }
 
 /* 标题行 + 常驻 ✕：退出的第一入口，永远在屏幕顶部，不用滚 */
@@ -827,10 +851,46 @@ footer {
 
 /* 点歌面板 */
 .req-dialog {
-  width: min(360px, 92vw);
+  width: 100%;
   display: flex;
   flex-direction: column;
 }
+
+/* —— v1.20.7：曲库速点改成**单行横滑**，不换行 ———
+   换行的话 10 个标签要占 3 行（约 150px），把搜索框和「点歌」挤到屏幕外，
+   「那个框」显得又高又烦。横滑只占一行，两边还能看出还有更多。 */
+.req-chips {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding: 2px 0 4px;
+  margin: 0 -16px;
+  padding-left: 16px;
+  padding-right: 16px;
+}
+.req-chips::-webkit-scrollbar { display: none; }
+
+/* —— v1.20.7：「送给谁 / 祝福语」折起来 ——
+   绝大多数人只是点一首歌就走，两个输入框常驻纯属占地方。 */
+.req-more { margin-top: 2px; }
+
+.req-more > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 7px 2px;
+  font-size: 12px;
+  color: var(--muted);
+  user-select: none;
+}
+
+.req-more > summary::-webkit-details-marker { display: none; }
+
+.req-more[open] > summary { color: var(--text); }
+
+.req-more > input { margin-bottom: 8px; }
 
 /* 竖排四件套：歌名 / 送给谁 / 祝福语 / 提交 */
 .req-form { display: flex; flex-direction: column; gap: 8px; margin: 0 0 8px; }
@@ -1575,3 +1635,594 @@ footer { margin-top: 14px; }
   box-shadow: 0 6px 16px rgba(236, 72, 152, .35);
 }
 .req-cand-ok:active { transform: scale(0.98); }
+
+/* =====================================================================
+   v1.20.8 —— 主界面重排（用户：「曲库删掉 在线人数也删掉 开播中也删掉
+   那个头像位置改在左上角」「中间左边透明显示排队列表 下面就不要显示了」）
+   三个徽章的元素已从 HTML 删掉；这里把台标收成左上角角标、播放器改成
+   「左排队栏 + 右正在播放」两栏、排队列表透明浮在左侧。
+   ===================================================================== */
+
+/* —— 台标：左上角角标，不再是居中一行三颗徽章 —— */
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 9px;
+  padding: 2px 2px 0;
+  text-align: left;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 11px 5px 5px;
+  border-radius: 999px;
+  border: 1px solid rgba(167, 139, 250, .28);
+  background: rgba(20, 14, 45, .6);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .3);
+}
+
+/* 圆形头像：换成主播本人的图（桌面 Image_1790835436625_528） */
+.brand-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1.5px solid rgba(34, 211, 238, .45);
+  box-shadow: 0 0 10px rgba(34, 211, 238, .35);
+}
+
+.brand-logo { font-size: 16px; }
+
+.slogan {
+  margin: 0;
+  font-size: 9.5px;
+  letter-spacing: .5px;
+  opacity: .62;
+}
+
+/* 徽章整排撤掉后不再占任何空间 */
+.pill-row { display: none !important; }
+.live-dot { display: none !important; }
+
+/* —— 播放器：左排队栏 + 右正在播放 —— */
+.player {
+  display: grid;
+  grid-template-columns: 84px 1fr;
+  grid-template-areas: 'queue stage';
+  column-gap: 4px;
+  align-items: start;
+}
+
+.stage { grid-area: stage; }
+
+/* —— 左边透明排队栏 —— */
+.queue-rail {
+  grid-area: queue;
+  position: sticky;
+  top: 8px;
+  padding-top: 6px;
+  /* 透明：直接浮在电台背景上，不要卡片框 */
+  background: none;
+  border: 0;
+  box-shadow: none;
+}
+
+.queue-rail[hidden] { display: none !important; }
+
+.queue-rail-h {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 1.6px;
+  color: rgba(34, 211, 238, .8);
+  padding-left: 2px;
+  margin-bottom: 6px;
+  text-align: center;
+}
+
+.queue-rail-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.q-item {
+  display: flex;
+  gap: 4px;
+  align-items: flex-start;
+  padding: 5px 5px 6px;
+  border-radius: 10px;
+  /* 半透明玻璃：看得见队列，又不糊住背景 */
+  background: rgba(255, 255, 255, .045);
+  border: 1px solid rgba(255, 255, 255, .07);
+}
+
+.q-item.lib { opacity: .6; border-style: dashed; }
+
+.q-no {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: rgba(34, 211, 238, .18);
+  border: 1px solid rgba(34, 211, 238, .4);
+  color: #67e8f9;
+  font-family: "SFMono-Regular", "Roboto Mono", Consolas, monospace;
+  font-size: 8.5px;
+  font-weight: 700;
+  line-height: 12px;
+  text-align: center;
+}
+
+.q-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.q-main b {
+  font-size: 10.5px;
+  line-height: 1.25;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.q-artist {
+  font-size: 8.5px;
+  color: rgba(34, 211, 238, .8);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.q-state {
+  font-size: 8.5px;
+  color: var(--muted);
+  opacity: .8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queue-rail-empty {
+  margin: 4px 0 0;
+  font-size: 9px;
+  color: var(--muted);
+  opacity: .5;
+  text-align: center;
+  line-height: 1.5;
+}
+
+.queue-rail-empty[hidden] { display: none !important; }
+
+/* 排队栏里的歌名/点歌人都用等宽数字，跟「台」的仪表感一致 */
+.q-no { font-variant-numeric: tabular-nums; }
+
+/* 屏幕太窄就把排队栏收成横条在下面（保底不挤掉正在播放） */
+@media (max-width: 320px) {
+  .player { grid-template-columns: 1fr; grid-template-areas: 'stage' 'queue'; }
+  .queue-rail { position: static; }
+  .queue-rail-list { flex-direction: row; overflow-x: auto; }
+  .q-item { min-width: 76px; }
+}
+
+/* —— v1.20.8：封面换成主播本人（桌面 Image_1790835436625_528），圆形 ——
+   原来那个渐变方块 + 音符图标太「App 模板」，用户点名要换成这张图。
+   圆形用 border-radius 裁，不做带透明通道的圆图（省一份资源）。 */
+.cover {
+  border-radius: 50%;
+  background: #120d2c url("icons/dj-avatar.png") center / cover no-repeat;
+  box-shadow:
+    0 18px 44px rgba(139, 92, 246, .42),
+    0 0 0 2px rgba(34, 211, 238, .3),
+    0 0 34px rgba(236, 72, 152, .22);
+}
+
+/* 圆形封面里那道 HUD 扫描线留着（仪表感），但别盖住脸 */
+.cover::after {
+  background: repeating-linear-gradient(180deg, rgba(255, 255, 255, .04) 0 1px, transparent 1px 5px);
+}
+
+/* 音符占位图标：有了真人头像就藏掉，别叠在脸上 */
+.cover .note { display: none; }
+
+/* —— v1.20.8：点歌分环节进度条 ——
+   用户：「点歌每个环节显示进度」。以前只有一行字（下载中 3/5 MB），
+   不知道卡在哪一步。六个环节各一个节点，走到哪亮到哪，`.now` 是当前步。 */
+.req-steps {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin: 6px 0 2px;
+  padding-left: 2px;
+}
+
+.req-step {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  font-style: normal;
+  font-size: 9px;
+  line-height: 1.5;
+  text-align: center;
+  color: rgba(184, 173, 224, .42);
+  padding-top: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 节点圆点 */
+.req-step::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  margin-left: -3px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .16);
+  border: 1px solid rgba(255, 255, 255, .22);
+}
+
+/* 节点之间的连线：走到哪一段就亮哪一段 */
+.req-step::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 50%;
+  width: 100%;
+  height: 1px;
+  background: rgba(255, 255, 255, .12);
+}
+
+.req-step:last-child::after { display: none; }
+
+.req-step.on { color: rgba(103, 232, 249, .9); }
+.req-step.on::before {
+  background: #22d3ee;
+  border-color: #67e8f9;
+  box-shadow: 0 0 7px rgba(34, 211, 238, .7);
+}
+.req-step.on::after { background: rgba(34, 211, 238, .45); }
+
+/* 当前步：脉动一下，让眼睛能一下找到「现在到哪」 */
+.req-step.now {
+  color: #fff;
+  font-weight: 800;
+}
+
+.req-step.now::before {
+  background: var(--grad);
+  border-color: #f9a8d4;
+  box-shadow: 0 0 10px rgba(236, 72, 152, .9);
+  animation: stepPulse 1.3s ease-in-out infinite;
+}
+
+@keyframes stepPulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.5); opacity: .65; }
+}
+
+/* =====================================================================
+   v1.20.8 修：两栏 grid 之后，几个控件被自动塞进了左栏
+   （点歌按钮被压成一小块 —— 用户：「点歌按钮太不显眼了」）。
+   它们本来就该横跨整行；点歌再加大一号，电台里最该被看见的入口就是它。
+   ===================================================================== */
+.stage,
+.vod-row,
+.volume,
+.dj-bubble,
+.air-bar { grid-column: 1 / -1; }
+
+/* 点歌气泡：整行、大号、带光 —— 电台里唯一的「我要点歌」入口，必须一眼看见 */
+.dj-bubble {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(236, 72, 152, .45);
+  background: linear-gradient(100deg, rgba(236, 72, 152, .22), rgba(139, 92, 246, .22));
+  box-shadow: 0 10px 28px rgba(236, 72, 152, .32), inset 0 1px 0 rgba(255, 255, 255, .14);
+}
+
+.dj-bubble .dj-face { font-size: 22px; line-height: 1; }
+
+.dj-bubble .dj-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 14.5px;
+  font-weight: 800;
+  text-align: left;
+  letter-spacing: .3px;
+}
+
+.dj-bubble .dj-cta {
+  flex: none;
+  padding: 8px 18px;
+  border-radius: 999px;
+  background: var(--grad);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 900;
+  box-shadow: 0 6px 16px rgba(236, 72, 152, .5);
+}
+
+.dj-bubble:active { transform: scale(0.985); }
+
+/* —— 封面：真圆形 + 别让黑胶盘盖住主播的脸 ——
+   原来里面有个旋转的黑胶圆盘（.cover-ring），换成真人头像之后它就是「一张
+   唱片压在脸上」，必须撤掉。 */
+#cover {
+  border-radius: 50% !important;
+  background: #120d2c url("icons/dj-avatar.png") center / cover no-repeat !important;
+  box-shadow:
+    0 16px 40px rgba(139, 92, 246, .4),
+    0 0 0 2px rgba(34, 211, 238, .3),
+    0 0 30px rgba(236, 72, 152, .2) !important;
+}
+
+#cover .cover-ring,
+#cover .note { display: none !important; }
+
+/* 圆形封面里的状态角标跟着改成小药丸，贴在右上而不是压在脸上 */
+#cover .status {
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-radius: 999px;
+}
+
+/* —— v1.20.8 修：左栏被长曲名顶宽了 ——
+   grid 列写死 84px，但 .q-main b 是 flex 子项，最小内容宽度会把列撑开
+   （截图里「听妈妈的…」压到右边、第 5 条被裁掉）。列宽用 minmax(0, 84px)
+   锁死，歌名再长也只在栏内省略号。 */
+.player { grid-template-columns: minmax(0, 84px) minmax(0, 1fr); }
+
+.queue-rail { min-width: 0; overflow: hidden; }
+.queue-rail-list { min-width: 0; }
+
+.q-item { min-width: 0; }
+.q-item .q-main,
+.q-main { min-width: 0; overflow: hidden; }
+
+.q-main b,
+.q-artist,
+.q-state { max-width: 100%; }
+
+/* =====================================================================
+   v1.20.8 修二：布局没铺满 + 待播列表压到附言上
+   用户原话：「待播列表 和那个附言重叠了你没发现吗 这些内容尺寸手机都没铺满啊」
+   根因：
+     · 左栏没有高度上限，第 4 条往下溢出，正好落在附言文字框那一行 → 重叠；
+     · 封面写死 min(46vw,150px)，在「左栏 + 右栏」两栏里居中，两侧各留
+       近 200px 空白 —— 手机屏幕根本没被用起来。
+   改：左栏 align-self + max-height + 裁掉溢出；封面放大到接近全栏宽；
+       标题/附言跟着放大，卡片内边距收窄，让内容真的把屏铺满。
+   ===================================================================== */
+.player {
+  padding: 12px 10px 12px;
+  column-gap: 10px;
+  grid-template-columns: minmax(0, 96px) minmax(0, 1fr);
+}
+
+/* 左栏：不许溢出 —— align-self:start 让它按内容高度收缩，
+   max-height + overflow 保证再长也不会压到右栏的附言上 */
+.queue-rail {
+  align-self: start;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+/* 封面：放大到几乎占满右栏，手机屏就用起来了 */
+#cover {
+  width: 100%;
+  max-width: 208px;
+  margin: 0 auto;
+}
+
+/* 标题 / 歌手 / 附言：跟着放大一档，铺满右栏宽度 */
+.stage h1 { font-size: 23px; margin: 12px 0 4px; }
+
+.stage .desc {
+  margin: 9px 0 0;
+  padding: 9px 12px;
+  font-size: 13px;
+  line-height: 1.7;
+  max-width: 100%;
+}
+
+.stage .now-artist { font-size: 13.5px; margin-top: 4px; }
+.stage .now-title { font-size: 17px; }
+.song-meta { margin-top: 8px; }
+
+/* 左栏条目：跟着加宽一点，歌名能多露两个字 */
+.q-main b { font-size: 11px; }
+.q-artist,
+.q-state { font-size: 8.5px; }
+
+/* 封面里的均衡器动效条压在脸上（圆形头像一放大就很明显）。状态已经由封面
+   顶部那颗「直播中」徽章说明了，这条动效条撤掉，别毁了这张图。 */
+#cover .eq { display: none !important; }
+
+/* =====================================================================
+   v1.20.9：改名「时光电台」+ 一屏铺满不滚动 + 丝滑过渡
+   用户原话：「铺满屏就行 不要上下滚动就行」「ui设计丝滑一点 不要…设计
+   要像专业开发工程师一样去设计完成」
+   ===================================================================== */
+
+/* —— 一屏铺满：整页竖向 flex，播放器吃掉所有剩余高度 —— */
+html, body { height: 100%; }
+body { overscroll-behavior-y: none; }
+
+.app {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 播放器撑满剩余空间 —— 底部就不留那条空白带了 */
+.player {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 96px) minmax(0, 1fr);
+  grid-template-areas: 'queue stage';
+  align-content: start;
+}
+
+.player .stage {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 0;
+}
+
+/* 封面吃到剩余高度：不用死 px，窗口多高它就长多高（上限 40dvh） */
+#cover {
+  width: auto;
+  height: min(38dvh, 260px);
+  max-width: 100%;
+  aspect-ratio: 1;
+  margin: 6px auto 0;
+  transition: transform .45s cubic-bezier(.22, .9, .3, 1),
+              box-shadow .45s ease;
+}
+
+/* 封面换成另一首时轻微缩放一下，视觉上有「切歌」的动作 */
+body.track-change #cover { transform: scale(.94); }
+
+footer { flex: none; margin-top: 10px; }
+
+/* —— 丝滑过渡：所有可交互元素统一曲线与时长 —— */
+:root {
+  --ease: cubic-bezier(.22, .9, .3, 1);
+  --t-fast: .16s;
+  --t-med: .26s;
+}
+
+.brand,
+.dj-bubble,
+.req-cand,
+.req-cand-ok,
+.req-chip,
+.chip,
+.volume input[type="range"] {
+  transition: transform var(--t-fast) var(--ease),
+              box-shadow var(--t-med) var(--ease),
+              background-color var(--t-fast) var(--ease),
+              border-color var(--t-fast) var(--ease),
+              opacity var(--t-fast) var(--ease);
+}
+
+/* 按下去立刻给回弹，别等 mouseup 才动 —— 触屏上「跟手」才叫丝滑 */
+.dj-bubble:active,
+.req-cand:active,
+.req-cand-ok:active,
+.chip:active,
+.dialog-x:active,
+.link-btn:active,
+.ghost:active,
+.primary:active {
+  transform: scale(.965);
+  transition-duration: .06s;
+}
+
+/* 焦点圈：键盘/无障碍可见，但不脏画面 */
+:focus-visible {
+  outline: 2px solid rgba(34, 211, 238, .75);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+/* 排队条目逐条浮现（用 --i 做级联延迟，由 JS 写入） */
+.q-item {
+  animation: qIn .34s var(--ease) both;
+  animation-delay: calc(var(--i, 0) * 55ms);
+}
+
+@keyframes qIn {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* 进度条平滑走而不是跳 */
+.vod-track i {
+  transition: width .9s linear;
+}
+
+/* 分环节进度条的当前步：脉动 */
+.req-step.now::before { animation: stepPulse 1.4s ease-in-out infinite; }
+
+/* 抽屉：滑入用真实位移，收起时不留残影 */
+.dialog-mask { animation: maskIn .2s var(--ease) both; }
+@keyframes maskIn { from { opacity: 0; } to { opacity: 1; } }
+
+.dialog { animation: sheetUp .26s var(--ease) both; }
+
+/* 减少动画偏好：关掉一切位移/脉动，别逼人晕 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+  }
+}
+
+/* 卡片撑满后内容别全顶在上头（底部空一大截很难看）：垂直居中，空白均分上下 */
+.player { align-content: center; }
+
+/* —— v1.20.9 修：曲库速点必须真的单行横滑 ——
+   v1.20.7 那条 nowrap 写在文件中间，被后面一条旧的 `flex-wrap: wrap` 覆盖掉了，
+   截图上还是两行（把「点歌」按钮和折叠区都挤下去了）。这次放在文件末尾并
+   加 !important，谁都盖不住它。 */
+.req-chips {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  flex-direction: row !important;
+  gap: 6px;
+  overflow-x: auto !important;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  max-width: 100%;
+  margin: 0 -16px;
+  padding: 2px 16px 4px;
+}
+
+.req-chips::-webkit-scrollbar { display: none; }
+.req-chips .chip { flex: none !important; white-space: nowrap; }
+
+/* —— v1.20.9 修（重要）：点歌条目里的进度条/候选区被挤成一团 ——
+   .req-item 是 flex 容器但没开 wrap，我给进度条写了 flex-basis:100%（意图换行），
+   浏览器不换行就把它和 #1 标签挤在一行，候选版本区被推出右边裁掉。
+   截图证据：点完歌后条目中间一团、右边半截列表 + 横向滚动条。
+   顺带把条目的三块（序号/正文/状态）排好：正文和状态占满，进度条和候选各占一行。 */
+.req-item {
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.req-body { flex: 1 1 60%; min-width: 0; }
+.req-st { flex: 0 0 auto; margin-left: auto; }
+.req-steps,
+.req-cands {
+  flex: 1 0 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.req-cands { margin-top: 7px; }
