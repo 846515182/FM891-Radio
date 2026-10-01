@@ -989,7 +989,9 @@
     function hasOpenDialog() {
       try {
         if (reqMask && !reqMask.hidden) return true;
-        const upd = document.getElementById('updMask');
+        // id 是 updateMask 不是 updMask —— 写错的话这里永远取到 null，
+        // 更新弹窗开着时按返回键会直接退出 App（判空兜住了崩溃，兜不住逻辑）
+        const upd = document.getElementById('updateMask');
         if (upd && !upd.hidden) return true;
       } catch (_) { /* 忽略 */ }
       return false;

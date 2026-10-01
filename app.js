@@ -1172,7 +1172,7 @@ function updatePlayUI() {
     playBtn.classList.toggle('is-playing', playing);
     playBtn.setAttribute('aria-label', playing ? '直播中' : '播放');
   }
-  /* v1.21.2：「开播中」徽章撤了（用户：开播中也删掉）。元素已从 HTML 删掉，
+  /* v1.21.3：「开播中」徽章撤了（用户：开播中也删掉）。元素已从 HTML 删掉，
    * 这里必须判空 —— 直接 $('liveDot').hidden 会 TypeError 把整个 UI 打断。 */
   const dot = $('liveDot');
   if (dot) dot.hidden = !playing;
@@ -1620,7 +1620,7 @@ function renderNowPlaying(j) {
  * 垫场在后）。刚备好的点歌会被插到下一首 —— 就是在这里冒出来的。
  * 单曲模式下不显示：那会儿耳朵里是单曲，混着电台歌单只会更乱。 */
 function renderUpNext(list) {
-  /* v1.21.2：排队列表从底部那条横滑搬到左边一栏透明列表
+  /* v1.21.3：排队列表从底部那条横滑搬到左边一栏透明列表
    * （用户：中间左边透明显示排队列表，下面就不要显示了）。 */
   const box = $('queueRail');
   const strip = $('queueRailList');
@@ -1643,6 +1643,10 @@ function renderUpNext(list) {
   queue.forEach((it, i) => {
     const li = document.createElement('li');
     li.className = 'q-item' + (it.lib ? ' lib' : '');
+    /* 把序号写进 --i：CSS 里 qIn 动画用它做级联延迟（每条晚 55ms 依次浮现）。
+     * 之前 CSS 写了 var(--i) 但从没赋值 → 延迟恒为 0，排队条目是一起出现的，
+     * 「丝滑」就少了一半。jsdom 不跑动画，所以要靠断言盯住这个接线。 */
+    try { li.style.setProperty('--i', String(i)); } catch (_) { /* 忽略 */ }
     const no = document.createElement('span');
     no.className = 'q-no';
     no.textContent = String(i + 1);
@@ -2258,7 +2262,7 @@ function currentVersion() {
       if (v) return v;
     }
   } catch (_) { /* 忽略 */ }
-  return '1.21.2'; // 网页版：与 manifest versionName 同步维护
+  return '1.21.3'; // 网页版：与 manifest versionName 同步维护
 }
 
 let updateUrl = '';
