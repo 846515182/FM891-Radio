@@ -71,7 +71,12 @@ public class MainActivity extends Activity {
         s.setUseWideViewPort(true);
         s.setSupportZoom(false);
         s.setBuiltInZoomControls(false);
-        s.setCacheMode(WebSettings.LOAD_DEFAULT);
+        /* 覆盖安装后首启会闪一下旧界面，再变新 —— 根因在这里：
+         * LOAD_DEFAULT 会把 file:///android_asset/* 缓存起来，而覆盖安装**URL
+         * 一点没变、内容全换了**，首启命中旧缓存画出旧界面，第二次进来才读新的。
+         * 页面外壳只有几百 KB，本来就该每次从 APK 里读；直播流、GitHub 更新
+         * 检查也都是长连接/必须最新的，缓存对它们只有坏处没有好处。 */
+        s.setCacheMode(WebSettings.LOAD_NO_CACHE);
         /* v1.20：直播流走直连 http://IP:8080（隧道每天换域名，长连接最怕它）。
          * 页面是 file:// —— Chromium 把 file:// 当可信源，加载 http 资源会按
          * 「混合内容」拦，而 WebView 默认 NEVER_ALLOW。不放开这条，直连流
