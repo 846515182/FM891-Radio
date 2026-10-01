@@ -282,8 +282,14 @@
       if (Array.isArray(msg.cands)) {
         rec.cands = msg.cands
           .filter((c) => c && c.n)
-          .slice(0, 8)
-          .map((c) => ({ n: String(c.n), t: String(c.t || '').slice(0, 40), best: !!c.best }));
+          .slice(0, 6)
+          .map((c) => ({
+            n: String(c.n),
+            t: String(c.t || '').slice(0, 40),
+            s: String(c.s || '').slice(0, 20),   // 歌名
+            a: String(c.a || '').slice(0, 20),   // 歌手（单独一列，便于一眼认原唱）
+            best: !!c.best,
+          }));
       }
       prog.set(id, rec);
       /* 候选挂到条目上（渲染要用）。挂完重画一次，列表里立刻能点版本。 */
@@ -426,6 +432,10 @@
     /* ---------------- 云同步开播 ---------------- */
     /* 服务器 retain 的「此刻在放」：校验后交给 app.js 的 onAir ——
      * 正在跟播的人自动切到下一首，没在听的人露出「一起听」条。 */
+    /* picking 是**本地**的待确认选择：点一行只是选中，要再点「确定」才发出去。
+     * 分两步是为了让人能看见、能改 —— 以前点一下就发出去，界面上完全看不出
+     * 到底选没选中（用户原话：手点了也没反应、没提示）。 */
+    let picking = {};
     let airState = null;
 
     /* 服务器随 air 一起发的「接下来 N 首」（最多 5 首）。逐条校验：脏数据只丢
@@ -492,6 +502,7 @@
       if (String(it.pick || '') === num) return;
       it.pick = num;
       it.ver = (it.ver || 0) + 1;      // ver 必须涨，否则对端手里那份会盖回来
+      delete picking[it.id];           // 已经发出去了，别再留着当「待确认」
       publish(true);
       render();
       say('好，就下第 ' + num + ' 版');
@@ -659,27 +670,53 @@
         if (it.cands && it.cands.length > 1 && !it.del && it.st !== 'ready') {
           const cbox = document.createElement('span');
           cbox.className = 'req-cands';
+          const cur = String(it.pick || picking[it.id] || '');
           const chint = document.createElement('small');
           chint.className = 'req-cands-h';
-          chint.textContent = '挑一个版本（不挑就用推荐那版）';
+          chint.textContent = it.pick
+            ? ('已选第 ' + it.pick + ' 版 · 正按这版下')
+            : (cur ? '挑好了 → 点「确定」生效' : '下面几版挑一个（不挑就用推荐那版）');
           cbox.appendChild(chint);
-          const strip = document.createElement('span');
-          strip.className = 'req-cands-strip';
+          const list = document.createElement('span');
+          list.className = 'req-cands-list';
           it.cands.forEach((cd) => {
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'req-cand'
-              + (String(it.pick || '') === String(cd.n) ? ' on' : '')
-              + (cd.best ? ' best' : '');
-            btn.textContent = cd.n + '. ' + cd.t;
-            btn.title = cd.t;
-            btn.addEventListener('click', (ev) => {
+            const on = cur === String(cd.n);
+            const row = document.createElement('button');
+            row.type = 'button';
+            row.className = 'req-cand' + (on ? ' on' : '') + (cd.best ? ' best' : '');
+            const dot = document.createElement('i');
+            dot.className = 'req-cand-dot';
+            dot.textContent = on ? '●' : '○';
+            const nm = document.createElement('b');
+            nm.textContent = String(cd.s || cd.t || '').slice(0, 18);
+            row.appendChild(dot);
+            row.appendChild(nm);
+            /* 歌手单独一列。bot 原文是「神话 张惠妹」挤在一格里，界面上分不清
+             * 谁是谁 —— 这一列就是给「我要原唱」的眼睛用的。 */
+            if (cd.a) {
+              const ar = document.createElement('em');
+              ar.textContent = String(cd.a).slice(0, 12);
+              row.appendChild(ar);
+            }
+            row.addEventListener('click', (ev) => {
               ev.stopPropagation();
-              pickVersion(it, cd.n);
+              picking[it.id] = String(cd.n);
+              render();
             });
-            strip.appendChild(btn);
+            list.appendChild(row);
           });
-          cbox.appendChild(strip);
+          cbox.appendChild(list);
+          if (!it.pick && cur) {
+            const ok = document.createElement('button');
+            ok.type = 'button';
+            ok.className = 'req-cand-ok';
+            ok.textContent = '确定，就下第 ' + cur + ' 版';
+            ok.addEventListener('click', (ev) => {
+              ev.stopPropagation();
+              pickVersion(it, cur);
+            });
+            cbox.appendChild(ok);
+          }
           li.appendChild(cbox);
         }
         frag.appendChild(li);
@@ -823,12 +860,32 @@
     let catalog = [];
     let catTimer = null;
     let lastOrigin = '';
-    const GENERIC_BLESS = [   // 曲库没连上时的兜底祝福（与服务端词本同款语气）
+    const GENERIC_BLESS = [   // 曲库没连上时的兜底祝福（与服务端词本同款语气）。
+      // 条数必须跟服务端的 generic_bless 差不多：只有 5 条的时候，用户连点几次
+      // 「AI 写祝福」出来的都是同一句，看着就像按钮坏了。
       '愿你听到想听的歌，见到想见的人。',
       '这首歌，替我说声谢谢你。',
       '愿此刻的你，被音乐温柔以待。',
       '点一首歌，存一份好心情。',
       '愿你眼里有光，耳里有歌。',
+      '夜深了还不睡的人，听完这首就早点休息吧。',
+      '这条夜路不短，但有歌陪着你，就不算太孤单。',
+      '愿你今晚睡得沉，明早醒来心里有光。',
+      '路上慢点开，别急，这首歌还没唱完。',
+      '愿你今天下班是带着笑走的。',
+      '累了就停一停，天不会塌。',
+      '今天已经很努力了，剩下的交给明天。',
+      '下雨天适合听歌，也适合什么都不想。',
+      '愿你出门带伞，回家有灯。',
+      '想一个人的时候，来点音乐，也算说说话了。',
+      '有些人不在身边，但歌替他们陪着你。',
+      '该放下的就放下吧，耳朵里要有新的声音。',
+      '愿你接下来的每一步，都算数。',
+      '你要的那件事，会成的，我押这首歌。',
+      '愿你越来越像你自己。',
+      '一个人也挺好的，至少歌是自己选的。',
+      '转个身，好事就来了——这首算个预告。',
+      '听完了，抖抖精神，上场吧。',
     ];
 
     function catOrigin() {
