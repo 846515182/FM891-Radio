@@ -2465,3 +2465,109 @@ body.track-change #cover {
 
 .wall-empty { margin: 4px 0 0; font-size: 11px; color: var(--muted); opacity: .7; }
 .wall-empty[hidden] { display: none !important; }
+
+/* —— v1.21.2 修：主播性格那一行塌了 ——
+   .mood 命中了 .req-form button 的 width:100%（那条规则给「点歌」主按钮写的，
+   覆盖了所有表单按钮），于是四个性格按钮各占一整行，只剩「自动」看得见，
+   「主」字被挤到屏幕外。截图证据：点歌台里只剩一条满宽的「自动」。
+   修：性格按钮自己定死宽度（flex:1 等分），标签不换行。 */
+.req-form .mood,
+.req-form .mood-row .mood {
+  width: auto !important;
+  flex: 1 1 0 !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  margin: 0 !important;
+}
+
+.req-form .mood-row .mood.auto {
+  flex: 0 0 auto !important;
+  padding: 7px 10px !important;
+}
+
+.req-form .mood-lb {
+  flex: none !important;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+/* 兜底：性格行整体不换行，横向排布 */
+.mood-row {
+  flex-wrap: nowrap !important;
+  gap: 4px !important;
+}
+.mood-row .mood {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* =====================================================================
+   v1.21.2 修二：封面还是太大，排队列表被压住
+   用户原话：「中间你那个头像还是很大 排队哪个列表被覆盖了」。
+   前一版只把封面调到 min(30dvh,300px) + 排队栏 z-index:3 —— 层叠上不压了，
+   但**尺寸还是压**：300px 的圆在 360px 宽的屏上、光环再外扩一圈，左边缘就啃到
+   排队栏，条目右半被盖（截图：第 1 条右边缘贴着封面白圆）。
+   这次两件事一起做：
+     1) 封面按**列宽**封顶（不只是屏高）—— 排队栏 + 封面必须同屏不打架；
+     2) 封面右移到舞台正中、排队栏留出安全间距（gap 加大），不再靠 z-index 硬压。
+   ===================================================================== */
+.player {
+  column-gap: 12px;
+  grid-template-columns: minmax(0, 104px) minmax(0, 1fr);
+}
+
+#cover {
+  /* 两个上限取小的那个：屏高 30%、列宽 78%。列宽才是「会不会压到排队栏」的决定因素 */
+  height: min(30dvh, 78%);
+  width: auto;
+  max-width: 78%;
+  max-height: 30dvh;
+  aspect-ratio: 1;
+  margin: 6px auto 0;
+}
+
+#cover::before { inset: -3px; filter: blur(4px); }
+
+.queue-rail { padding-top: 2px; }
+.queue-rail-list { gap: 4px; }
+.q-item { padding: 4px 5px 5px; }
+.q-main b { font-size: 10.5px; }
+
+/* 极窄屏：排队栏缩到 88px，封面再让一步 */
+@media (max-width: 340px) {
+  .player { grid-template-columns: minmax(0, 88px) minmax(0, 1fr); }
+  #cover { max-width: 72%; }
+}
+
+/* —— v1.21.2 修三：封面被我上一条写没了 ——
+   错在哪：`height: min(30dvh, 78%)` 里的 78% 是相对**父容器高度**，而父容器
+   （.stage）高度由内容决定 —— 循环依赖，浏览器解析成 0，封面整个消失
+   （截图：歌名左边只剩一个小紫点）。
+   正确写法：只给 width，两个上限都是确定值（78% 相对列宽、30dvh 相对视口），
+   高度交给 aspect-ratio 推。
+   同理 max-width/max-height 里的百分比也一并去掉，别再引入循环。 */
+#cover {
+  width: min(78%, 30dvh);
+  height: auto;
+  aspect-ratio: 1;
+  max-width: none;
+  max-height: none;
+  margin: 6px auto 0;
+}
+
+@media (max-width: 340px) {
+  #cover { width: min(72%, 26dvh); }
+}
+
+/* —— v1.21.2 修四（终）：封面靠右对齐，排队栏靠左 —— 结构上不可能再撞 ——
+   前面几版都在「调尺寸」上打转（30dvh → 28dvh → min(78%,30dvh)…），可封面
+   是居中的：它在 stage 里居中 = 左边必然往排队栏那边溢出多少，全看列宽差多少。
+   只要居中，两者就有「可能相撞」的关系。
+   改成右对齐（margin-left:auto），封面左边 = stage 右边缘 − 封面宽，永远在
+   排队栏右边留够空间。不用再赌尺寸了。
+   ------------------------------------------------------------------ */
+#cover {
+  margin: 6px 0 0 auto;      /* 靠右，别居中 */
+  width: min(72%, 26dvh);
+}
