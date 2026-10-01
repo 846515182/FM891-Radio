@@ -2226,3 +2226,91 @@ footer { flex: none; margin-top: 10px; }
   box-sizing: border-box;
 }
 .req-cands { margin-top: 7px; }
+
+/* =====================================================================
+   创意①：封面跟着歌呼吸
+   app.js 用「歌名+歌手」的稳定哈希算出 --cover-hue（190..340，青→紫→粉），
+   下面这一整套（光环 / 封面投影 / 播放器底色 / 背景光晕 / 进度条）全都读它。
+   同一首歌永远是同一个颜色；换歌时 0.8s 化过去，不是硬切。
+   ===================================================================== */
+:root { --cover-hue: 265; }
+
+/* 封面外圈：两圈随歌变化的光环，慢转 —— 「在呼吸」的视觉来源 */
+#cover::before {
+  content: '';
+  position: absolute;
+  inset: -7px;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg,
+    hsl(var(--cover-hue) 85% 62% / .55),
+    hsl(calc(var(--cover-hue) + 42) 85% 62% / .18),
+    hsl(calc(var(--cover-hue) - 34) 85% 62% / .5),
+    hsl(var(--cover-hue) 85% 62% / .55));
+  filter: blur(7px);
+  opacity: .85;
+  z-index: -1;
+  animation: hueSpin 14s linear infinite;
+  transition: background .8s var(--ease);
+  pointer-events: none;
+}
+
+@keyframes hueSpin { to { transform: rotate(360deg); } }
+
+#cover {
+  box-shadow:
+    0 16px 40px hsl(var(--cover-hue) 70% 45% / .40),
+    0 0 0 2px hsl(var(--cover-hue) 90% 66% / .55),
+    0 0 52px hsl(var(--cover-hue) 88% 58% / .32) !important;
+  transition: box-shadow .8s var(--ease), transform .45s var(--ease);
+}
+
+/* 播放器底色跟着歌走 */
+.player {
+  background:
+    linear-gradient(180deg,
+      hsl(var(--cover-hue) 70% 50% / .10),
+      hsl(calc(var(--cover-hue) + 30) 65% 50% / .07) 45%,
+      rgba(255, 255, 255, .03)) !important;
+  transition: background .8s var(--ease);
+}
+
+/* 背景光晕：左上那团跟着歌换色 */
+.bg-glow::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(58vw 46vw at 18% -6%, hsl(var(--cover-hue) 80% 55% / .34), transparent 62%),
+    radial-gradient(46vw 42vw at 108% 24%, hsl(calc(var(--cover-hue) + 55) 80% 58% / .22), transparent 60%);
+  transition: background .8s var(--ease);
+  pointer-events: none;
+}
+
+/* 进度条也吃这个色相，整屏是一个调子 */
+.vod-track i {
+  background: linear-gradient(90deg,
+    hsl(var(--cover-hue) 90% 62%), hsl(calc(var(--cover-hue) + 48) 88% 66%)) !important;
+  box-shadow: 0 0 12px hsl(var(--cover-hue) 90% 60% / .6) !important;
+}
+
+/* 角标频率标也跟着 */
+.brand-logo span,
+.brand-logo { transition: color .8s var(--ease); }
+
+/* 换歌瞬间封面轻微一缩，视觉上「切了一刀」 */
+body.track-change #cover { transform: scale(.93); }
+
+@media (prefers-reduced-motion: reduce) {
+  #cover::before { animation: none; }
+}
+
+/* track-change 由 JS 加上后不主动移除（避免在 VOD 播放块里塞 setTimeout），
+   改用「短动画 + forwards 不保持」的写法：class 留着也会自己弹回原状。 */
+body.track-change #cover {
+  animation: trackPop .46s var(--ease) both;
+}
+
+@keyframes trackPop {
+  0% { transform: scale(.93); }
+  100% { transform: scale(1); }
+}

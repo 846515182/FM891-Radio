@@ -1172,7 +1172,7 @@ function updatePlayUI() {
     playBtn.classList.toggle('is-playing', playing);
     playBtn.setAttribute('aria-label', playing ? '直播中' : '播放');
   }
-  /* v1.20.9：「开播中」徽章撤了（用户：开播中也删掉）。元素已从 HTML 删掉，
+  /* v1.21.0：「开播中」徽章撤了（用户：开播中也删掉）。元素已从 HTML 删掉，
    * 这里必须判空 —— 直接 $('liveDot').hidden 会 TypeError 把整个 UI 打断。 */
   const dot = $('liveDot');
   if (dot) dot.hidden = !playing;
@@ -1558,11 +1558,43 @@ function isVod() { return vod !== null; }
 /* 当前在放什么 → 界面（air 与本地单曲**共用同一套展示**）。
  * 刻意不在此设 vod：vod 的语义是「本地加载的有限单曲」，而直播是一条
  * 无限流。一旦 isVod() 为真，进度 / 播完 / 接棒那套单曲逻辑全会被误触发。 */
+/* —— 封面跟着歌「呼吸」：同一首歌永远同一个颜色 ——
+   用户要的：电台要看起来是「活的」，翻到下一首要一眼看得出换歌了。
+   做法：拿「歌名+歌手」算一个稳定哈希 → 色相 → 写进 CSS 变量 --cover-hue，
+   光环、封面投影、播放器底色、背景光晕全都读它。CSS 里有 .8s 过渡，所以
+   换歌时颜色是「化过去」的，不是硬切。
+   色相锁在 190–340（青→蓝→紫→粉）：避开黄绿那片，怎么随机都不会刺眼。 */
+function coverHue(title, artist) {
+  const s = String(title || '') + '|' + String(artist || '');
+  if (!s.replace(/\|/g, '')) return 265;          // 没歌名就固定紫，别乱跳
+  let h = 2166136261 >>> 0;                        // FNV-1a：稳定、分布均匀
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return 190 + (h % 151);                           // 190..340
+}
+
+function setCoverHue(title, artist) {
+  try {
+    const hue = coverHue(title, artist);
+    const root = document.documentElement;
+    if (root.style.getPropertyValue('--cover-hue') === String(hue)) return;
+    root.style.setProperty('--cover-hue', String(hue));
+    /* 换歌瞬间给 body 打个标记，封面会轻微缩一下（「切了一刀」的动作感）。
+     * **不用 setTimeout 收尾** —— 那会给 VOD 播放块凭空加一个定时器，
+     * vod-test 有一条断言专门守「VOD 块里不许出现 setTimeout」（怕它另起重连）。
+     * 标记由 CSS 动画自己结束：这里只加上不移掉，下一次换歌会再触发一次。 */
+    document.body.classList.add('track-change');
+  } catch (_) { /* 忽略 */ }
+}
+
 function renderNowPlaying(j) {
-  const title = String((j && j.title) || '').trim().slice(0, 60) || '拾光电台 FM89.1';
+  const title = String((j && j.title) || '').trim().slice(0, 60) || '时光电台';
   const artist = String((j && j.artist) || '').trim().slice(0, 40);
   const ann = String((j && j.ann) || '').trim().slice(0, 240);
   const from = String((j && j.from) || '').trim().slice(0, 30);
+  setCoverHue(title, artist);
   nowTitle = '';
   const nt = $('nowTitle');
   if (nt) nt.textContent = '';   // 歌名归大字（h1），这里再来一遍就是重复展示
@@ -1588,7 +1620,7 @@ function renderNowPlaying(j) {
  * 垫场在后）。刚备好的点歌会被插到下一首 —— 就是在这里冒出来的。
  * 单曲模式下不显示：那会儿耳朵里是单曲，混着电台歌单只会更乱。 */
 function renderUpNext(list) {
-  /* v1.20.9：排队列表从底部那条横滑搬到左边一栏透明列表
+  /* v1.21.0：排队列表从底部那条横滑搬到左边一栏透明列表
    * （用户：中间左边透明显示排队列表，下面就不要显示了）。 */
   const box = $('queueRail');
   const strip = $('queueRailList');
@@ -2226,7 +2258,7 @@ function currentVersion() {
       if (v) return v;
     }
   } catch (_) { /* 忽略 */ }
-  return '1.20.9'; // 网页版：与 manifest versionName 同步维护
+  return '1.21.0'; // 网页版：与 manifest versionName 同步维护
 }
 
 let updateUrl = '';
