@@ -2314,3 +2314,154 @@ body.track-change #cover {
   0% { transform: scale(.93); }
   100% { transform: scale(1); }
 }
+
+/* =====================================================================
+   v1.21.1 修：封面太大，把左边排队栏压住了
+   用户原话：「中间那个头像真鸡巴大啊 排队歌曲都被遮住了」。
+   根因：封面按 38dvh 算尺寸，在窄屏上它比「右栏可用宽度」还宽，
+   加上光环 inset:-7px + blur(7px) 就压到左边的排队栏上。
+   改三处：尺寸按**右栏宽度和高度里更小的那个**收；排队栏升到更高层；
+   光环收窄。窄屏另外再降一档。
+   ===================================================================== */
+
+/* 封面：min(高度, 宽度) 两个都限死，宽高自动保持 1:1 */
+#cover {
+  height: min(30dvh, 300px);
+  width: auto;
+  max-width: 100%;
+  max-height: 30dvh;
+  aspect-ratio: 1;
+}
+
+/* 光环别伸出去那么多 */
+#cover::before { inset: -4px; filter: blur(5px); }
+
+/* 排队栏永远压在封面上层，不被压住 */
+.queue-rail {
+  position: relative;
+  z-index: 3;
+}
+
+.player .stage { z-index: 1; }
+
+/* 窄屏（排队栏 + 封面挤在一起的那种）封面再收一档 */
+@media (max-width: 380px), (max-height: 680px) {
+  #cover { height: min(24dvh, 168px); max-height: 24dvh; }
+}
+
+/* =====================================================================
+   创意②（补）：主播性格三选一 —— 用户自己选，不替他决定
+   ===================================================================== */
+.mood-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 2px 0 0;
+}
+
+.mood-lb {
+  font-size: 11px;
+  color: var(--muted);
+  margin-right: 2px;
+  flex: none;
+}
+
+.mood {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 4px !important;
+  font-size: 11.5px !important;
+  font-weight: 700 !important;
+  color: #ddd3ff !important;
+  background: rgba(139, 92, 246, .14) !important;
+  border: 1px solid rgba(167, 139, 250, .32) !important;
+  border-radius: 999px !important;
+  cursor: pointer;
+  transform: none !important;
+  transition: background-color var(--t-fast) var(--ease),
+              border-color var(--t-fast) var(--ease),
+              transform var(--t-fast) var(--ease) !important;
+}
+
+.mood.auto { flex: 0 0 auto; padding: 7px 11px !important; color: var(--muted) !important; }
+
+.mood.on {
+  background: var(--grad) !important;
+  border-color: rgba(236, 72, 152, .6) !important;
+  color: #fff !important;
+  box-shadow: 0 4px 12px rgba(236, 72, 152, .3);
+}
+
+.mood:active { transform: scale(.94) !important; }
+
+/* =====================================================================
+   创意⑤：点播墙
+   ===================================================================== */
+.wall {
+  margin: 4px 0 10px;
+  border-top: 1px solid rgba(255, 255, 255, .08);
+  padding-top: 8px;
+}
+
+.wall > summary {
+  list-style: none;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--muted);
+  padding: 4px 2px;
+  user-select: none;
+}
+
+.wall > summary::-webkit-details-marker { display: none; }
+.wall[open] > summary { color: var(--text); }
+.wall > summary i { font-style: normal; opacity: .7; }
+
+.wall-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 32vh;
+  overflow-y: auto;
+}
+
+.wall-item {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 6px 9px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, .035);
+  border: 1px solid rgba(255, 255, 255, .055);
+}
+
+.wall-item b {
+  flex: none;
+  font-size: 12px;
+  font-weight: 700;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wall-artist {
+  flex: 1;
+  min-width: 0;
+  font-size: 10.5px;
+  color: rgba(34, 211, 238, .8);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wall-who {
+  flex: none;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.wall-empty { margin: 4px 0 0; font-size: 11px; color: var(--muted); opacity: .7; }
+.wall-empty[hidden] { display: none !important; }

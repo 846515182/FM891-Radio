@@ -131,6 +131,15 @@
           <ul class="ac-list" id="reqAc" hidden></ul>
         </div>
         <div class="req-chips" id="reqChips" hidden></div>
+        <!-- 主播性格：**你自己选**。时段自动只是兜底（用户原话：用户自己选 DJ 的
+             性格，比我们替他决定好得多）。选中值跟着这单一起发给云端。 -->
+        <div class="mood-row" id="moodRow" role="radiogroup" aria-label="主播性格">
+          <span class="mood-lb">主播</span>
+          <button class="mood auto" type="button" data-mood="">自动</button>
+          <button class="mood" type="button" data-mood="announce">报幕</button>
+          <button class="mood" type="button" data-mood="chat">闲聊</button>
+          <button class="mood" type="button" data-mood="night">深夜</button>
+        </div>
         <button class="primary" id="reqGo" type="submit">点歌</button>
         <!-- 「送给谁 / 祝福语」折起来：默认没人要填，每次都摆着两个输入框
              是这个面板显得又高又烦的主因（用户反馈「不要那个框」）。 -->
@@ -147,6 +156,12 @@
       <p class="req-sum" id="reqSum" hidden></p>
       <p class="req-hint" id="reqHint"></p>
       <ul class="req-list" id="reqList"></ul>
+      <!-- 创意⑤：点播墙 —— 听众点的歌就是节目单。播过的都留在这儿，能翻。 -->
+      <details class="wall">
+        <summary>📜 点播墙 <i id="wallCount"></i></summary>
+        <ol class="wall-list" id="wallList"></ol>
+        <p class="wall-empty" id="wallEmpty">还没播过 —— 你点的第一首会上墙</p>
+      </details>
       <div class="req-nick">
         <label for="nickInput">我的昵称</label>
         <input id="nickInput" type="text" maxlength="16" placeholder="别人点歌时看到的名字" />

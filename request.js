@@ -218,12 +218,16 @@
 
       const sTo = String(to || '').trim().slice(0, 16);
       const sMsg = String(msg || '').trim().slice(0, 60);
+      /* 主播性格：你在点歌台里选的那个，跟着这一单发到云端。选「自动」就空着，
+         服务器按时段挑（见 server.py 的 mood_of）。 */
+      const sMood = curMood();
       const it = {
         id: myId + '-' + nextSeq(),
         cid: myId,
         who: myName(),
         to: sTo,
         msg: sMsg,
+        mood: sMood,
         title: t,
         ts: now,
         ver: 1,
@@ -477,6 +481,128 @@
       return out;
     }
 
+    /* =====================================================================
+   创意②（补）：主播性格由**听友自己选**
+   我第一版做成了按时段自动切，那是我替他决定 —— 用户原话：「用户自己选 DJ
+   的性格，比我们替他决定好得多」。所以点歌台里给三选一 + 一个「自动」，
+   选择记在 localStorage，跟着每一单发给云端；服务器优先照你选的来。
+   ===================================================================== */
+    const MOODS = [
+      { id: '', label: '自动', hint: '按时段自己挑' },
+      { id: 'announce', label: '报幕', hint: '白天那种，一本正经' },
+      { id: 'chat', label: '闲聊', hint: '像朋友说话' },
+      { id: 'night', label: '深夜', hint: '慢半拍，气口长' },
+    ];
+
+    function curMood() {
+      try { return String(localStorage.getItem('fm891.mood') || ''); } catch (_) { return ''; }
+    }
+
+    function setMood(v) {
+      try {
+        if (v) localStorage.setItem('fm891.mood', v);
+        else localStorage.removeItem('fm891.mood');
+      } catch (_) { /* 忽略 */ }
+      renderMood();
+    }
+
+    function renderMood() {
+      const row = $('moodRow');
+      if (!row || typeof row.querySelectorAll !== 'function') return;
+      const list = row.querySelectorAll('.mood');
+      if (typeof list.forEach !== 'function') return;
+      const cur = curMood();
+      list.forEach((b) => {
+        if (!b || typeof b.getAttribute !== 'function') return;
+        const on = (b.getAttribute('data-mood') || '') === cur;
+        if (b.classList && typeof b.classList.toggle === 'function') b.classList.toggle('on', on);
+        if (typeof b.setAttribute === 'function') b.setAttribute('aria-checked', on ? 'true' : 'false');
+      });
+    }
+
+    /* =====================================================================
+       创意④：等待变成内容 —— 电台给的是一个承诺，不是一段沉默
+       「你那首《童话》前面还有 2 首」/「你的歌准备好了，马上到」。
+       以前只能盯着队列里的「第 N 位」自己算，播完也没人告诉你轮到没有。
+       这里每次 air 更新都算一次「我的歌前面还有几首」，**只在变化时说**，
+       同一状态不刷屏；轮到自己时给一条更明确的话。
+       ===================================================================== */
+    let _waitSeen = {};   // 我点的每一单上次算出来的位次
+    let _waitDone = {};   // 已经提示过「轮到你了」的单
+
+    function queuePromise() {
+      if (typeof myId !== 'string' || !myId || !airState) return;
+      const now = airState.id;
+      const nxt = airState.next || [];
+      visible().forEach((it) => {
+        if (!it || it.del || !it.cid || it.cid !== myId) return;
+        if (it.st === 'ready' || it.st === 'onair') return;   // 备好了 = 快了
+        const myIdHere = it.id;
+        const title = String(it.title || '你那首');
+        // 正在播的这一首位置算 -1；接下来歌单里的第几首就算它前面还有几首
+        let pos = -2;
+        if (myIdHere === now) pos = -1;
+        else {
+          const k = nxt.findIndex((x) => x && String(x.id) === String(myIdHere));
+          if (k >= 0) pos = k;
+        }
+        const prev = _waitSeen[myIdHere];
+        _waitSeen[myIdHere] = pos;
+        if (prev === undefined || prev === pos) return;   // 没变化不说话
+        if (pos === -2) {
+          // 从队里消失了：已经备好（正常）或被别人删了
+          if (!_waitDone[myIdHere]) {
+            _waitDone[myIdHere] = true;
+            try { R.toast('《' + title + '》备好了，马上到 ♪'); } catch (_) { /* 忽略 */ }
+          }
+          return;
+        }
+        if (pos === 0 && prev !== 0) {
+          try { R.toast('下一首就是《' + title + '》，准备耳朵'); } catch (_) { /* 忽略 */ }
+          return;
+        }
+        if (pos > 0) {
+          try {
+            R.toast('你那首《' + title + '》前面还有 ' + pos + ' 首');
+          } catch (_) { /* 忽略 */ }
+        }
+      });
+    }
+
+    function renderWall(list) {
+      /* 创意⑤：点播墙。听众点的歌就是节目单 —— 能翻到「我点的播过了」，
+       * 也能翻到别人点过的歌。这是电台跟一个播放器最不一样的地方。 */
+      const box = $('wallList');
+      const cnt = $('wallCount');
+      const empty = $('wallEmpty');
+      if (!box) return;
+      const arr = Array.isArray(list) ? list.filter((x) => x && x.title).slice(0, 40) : [];
+      if (cnt) cnt.textContent = arr.length ? '（' + arr.length + '）' : '';
+      if (empty) empty.hidden = arr.length > 0;
+      const sig = arr.map((x) => String(x.id || x.title)).join('|');
+      if (box.getAttribute('data-sig') === sig) return;   // 同一份别重画
+      box.setAttribute('data-sig', sig);
+      box.textContent = '';
+      arr.forEach((it) => {
+        const li = document.createElement('li');
+        li.className = 'wall-item';
+        const b = document.createElement('b');
+        b.textContent = String(it.title || '').slice(0, 14);
+        li.appendChild(b);
+        if (it.artist) {
+          const a = document.createElement('small');
+          a.className = 'wall-artist';
+          a.textContent = String(it.artist).slice(0, 10);
+          li.appendChild(a);
+        }
+        const w = document.createElement('small');
+        w.className = 'wall-who';
+        w.textContent = it.who ? String(it.who).slice(0, 8) + ' 点的' : '电台垫场';
+        li.appendChild(w);
+        box.appendChild(li);
+      });
+    }
+
     function onAirMsg(j) {
       if (!j || typeof j !== 'object') return false;
       const id = typeof j.id === 'string' ? j.id : '';
@@ -496,9 +622,12 @@
         // 台词是「点播归属+歌曲背景」的分层长句，80 字会截掉后半句
         ann: typeof j.ann === 'string' ? j.ann.slice(0, 240) : '',
         next: normNext(j.next),      // 「接下来」歌单（客户端那栏就靠它）
+        wall: Array.isArray(j.wall) ? j.wall : [],   // 创意⑤ 点播墙
       };
+      renderWall(airState.wall);
       ensureCatalog();   // 音源地址到位 → 顺手拉曲库（联想/AI 祝福/速点要用）
       render();          // 「正在播」标签跟着换条目
+      queuePromise();    // ④ 等待变成内容：轮到我之前就告诉我
       if (typeof R.onAir === 'function') {
         try { R.onAir(airState); } catch (_) { /* app 挂了不拖累点歌台 */ }
       }
@@ -844,6 +973,8 @@
       if (!reqMask) return;
       reqMask.hidden = false;
       ensureCatalog(true);   // 强制重拉：祝福候选是服务端随机摇的（见 ensureCatalog 说明）
+      renderMood();         // 主播性格选中态
+      if (typeof airState === 'object' && airState && airState.wall) renderWall(airState.wall);
       render();
       renderChips();
       // 每次打开回填当前昵称：用户可能在别处改过，或本地被清过
@@ -879,6 +1010,28 @@
     if (djBubble) djBubble.addEventListener('click', open);
     if (reqClose) reqClose.addEventListener('click', close);
     if (reqX) reqX.addEventListener('click', close);
+
+    /* 主播性格四选一：点一下就换，选中态立刻高亮（点选要有反馈）。
+       四个按钮直接写在 HTML 里（含「自动」），不在运行时造元素。
+       **能力探测**：精简的测试沙箱里元素可能没有 querySelectorAll/addEventListener
+       —— 那就让这一小段功能跳过，绝不能因为它把整个点歌模块搞挂（加载期抛异常
+       会让所有点歌能力一起消失）。 */
+    const moodRow = $('moodRow');
+    if (moodRow && typeof moodRow.querySelectorAll === 'function') {
+      const moods = moodRow.querySelectorAll('.mood');
+      if (typeof moods.forEach === 'function') {
+        moods.forEach((b) => {
+          if (!b || typeof b.addEventListener !== 'function') return;
+          b.addEventListener('click', (ev) => {
+            if (ev && typeof ev.stopPropagation === 'function') ev.stopPropagation();
+            setMood(typeof b.getAttribute === 'function' ? (b.getAttribute('data-mood') || '') : '');
+            try {
+              R.toast(curMood() ? ('主播：' + b.textContent) : '主播：按时段自动');
+            } catch (_) { /* 忽略 */ }
+          });
+        });
+      }
+    }
 
     /* 抽屉往下滑就关（用户反馈「不要那个框很烦人」—— 既然是抽屉，就得能用
      * 甩手势退出去，不能逼用户去找 ✕）。手势绑在抓手和遮罩空白处：抽屉内部
