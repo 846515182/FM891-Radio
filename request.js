@@ -358,10 +358,18 @@
 
     function stepOf(it) {
       if (it.st === 'ready' || it.st === 'onair') return 5;
-      const p = (prog && prog.get(it.id)) || null;
+      /* 步骤条必须和徽章说同一句话（用户：「点歌看不到进度在哪个环节」）：
+       * 正在被云开播放、或音源已入库（vodFor）→ 直接走到头；进度一律过
+       * 新鲜度闸，过期的跟徽章一起撤；还在搜但进度被服务端撤了（出结果
+       * 的瞬间）→ 亮到「全网找歌」，不许退回「已提交」跟「云端找歌中…」
+       * 的徽章打架。 */
+      if (airState && airState.id === it.id) return 5;
+      if (vodFor(it)) return 5;
+      const p = freshProg(it.id);
       const s = p && p.stage;
       if (s) return STAGE_STEP[s] != null ? STAGE_STEP[s] : 1;
-      return 0;   // 刚提交，还在等云端接单
+      if (it.st === 'searching') return 1;
+      return 0;   // 刚提交，还没亮到「全网找歌」
     }
 
     function progLabel(p) {
@@ -407,7 +415,17 @@
       ready.set(id, entry);
       pruneReady();
       const it = findItem(id, title);
-      if (it) announceReady(it, entry);
+      if (it) {
+        announceReady(it, entry);
+        /* 歌都入库了，候选列表必须收起来：st 从没人写成 'ready'，渲染那道
+         * `st !== 'ready'` 的闸形同虚设，「下面几版挑一个」在备好的条目上
+         * 永远挂着 —— 歌都备好了还挑什么（用户看到的「乱」之一）。 */
+        if (it.cands) {
+          it.cands = null;
+          it.candsSig = '';
+          render();
+        }
+      }
       return true;
     }
 
@@ -825,8 +843,13 @@
         li.appendChild(st);
 
         /* v1.20.8：分环节进度条。走到哪一步哪一步就亮，条目自己会更新。
-         * miss / 备好 / 已删除就不画了（没进度可言）。 */
-        if (!it.del && it.st !== 'miss') {
+         * 已删除 / 已备好（音源表命中）不画 —— 备好走到头了，位次徽章就是
+         * 它现在的意义；miss 结论要留得住（P4/P5：陈旧进度、发完就撤的
+         * 进度都不许翻案），但云端重试开搜带着**新鲜**进度时要照画，别哑着。
+         * 以前这道闸只认 st==='ready'，可 st 从来没人写成 ready，备好的
+         * 条目还挂着步骤条，服务端一撤进度就退回「已提交」，跟徽章
+         * 「第 N 位」自相矛盾（用户：「乱」）。 */
+        if (!it.del && it.st !== 'ready' && !vodFor(it) && (it.st !== 'miss' || freshProg(it.id))) {
           const step = stepOf(it);
           const bar = document.createElement('span');
           bar.className = 'req-steps';
