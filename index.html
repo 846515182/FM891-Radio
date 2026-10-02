@@ -160,12 +160,8 @@
       <p class="req-sum" id="reqSum" hidden></p>
       <p class="req-hint" id="reqHint"></p>
       <ul class="req-list" id="reqList"></ul>
-      <!-- 创意⑤：点播墙 —— 听众点的歌就是节目单。播过的都留在这儿，能翻。 -->
-      <details class="wall">
-        <summary>📜 点播墙 <i id="wallCount"></i></summary>
-        <ol class="wall-list" id="wallList"></ol>
-        <p class="wall-empty" id="wallEmpty">还没播过 —— 你点的第一首会上墙</p>
-      </details>
+      <!-- v1.21.9：点播墙（创意⑤）撤下 —— 播过的歌改由一次性提醒告知，
+           队列里只留「还没出结果」的条目，常驻历史没人看还挡着再点同一首。 -->
       <div class="req-nick">
         <label for="nickInput">我的昵称</label>
         <input id="nickInput" type="text" maxlength="16" placeholder="别人点歌时看到的名字" />

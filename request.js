@@ -62,6 +62,35 @@
     /* 云同步开播：服务器 retain 的「此刻在放」，带 startedAt 对齐所有人进度 */
     const AIR_NS = 'fm891-radio/air';
 
+    /* ---------------- 点歌结果 = 一次性提醒（v1.21.9） ----------------
+     * 用户原话：「失败了也一直显示、成功也一直显示，不能一次提醒就好了吗，
+     * 为啥会有历史记录」—— 结果只 toast 说一遍，条目随后从队列撤下；
+     * 队列里从此只留「还没出结果」的条目。miss 条目多留 20 秒宽限：
+     * 既够看完那条提示，也远大于回归套件在 merge 后断言渲染的窗口。 */
+    const MISS_GRACE = 20000;
+    const _said = Object.create(null);   // 一单只提醒一次（重连回放不许刷屏）
+    function sayOnce(key, text) {
+      if (_said[key]) return;
+      _said[key] = true;
+      try { R.toast(text); } catch (_) { /* 没有 toast 的测试沙箱：跳过 */ }
+    }
+    /* 撤单 = 打墓碑（del + ver+1）并靠快照同步让全网一起清 —— 和 prune()
+     * 淘汰超限条目走的是同一套契约，不新增协议。 */
+    function tombstone(it) {
+      if (!it || it.del) return false;
+      it.del = Date.now();
+      it.ver = (it.ver || 0) + 1;
+      return true;
+    }
+    /* 「没找到」= 结论：toast 只说一次，条目起表等宽限期满由 sweepDone 撤。 */
+    function noteMiss(it) {
+      if (!it || it.del) return;
+      if (!it.missAt) it.missAt = Date.now();
+      if (it.cid === myId || it.mine) {
+        sayOnce('miss:' + it.id, '《' + String(it.title || '这首歌') + '》没找到，换一首吧');
+      }
+    }
+
     /* ---------------- 主播气泡（打字机 + 播报队列） ---------------- */
     const djText = $('djText');
     let sayQueue = [];
@@ -198,6 +227,8 @@
           mine: false,
         };
         items.set(id, next);
+        // 对端的「没找到」结论也按一次性提醒走（toast 只说一次、20 秒后撤）
+        if (next.st === 'miss') noteMiss(next);
         changed = true;
       }
       return changed;
@@ -312,12 +343,14 @@
         }
       }
       /* 「没找到」是**结论**不是进度：进度只有 6 分钟新鲜度，过了就退回
-       * 「云端还在找」。所以它要落进条目自己的状态里，才留得住。 */
+       * 「云端还在找」。所以它要落进条目自己的状态里，才留得住。
+       * v1.21.9：结论只提醒一次（toast），条目 20 秒后由 sweepDone 撤下。 */
       if (stage === 'miss') {
         const hit = items.get(id);
         if (hit && hit.st !== 'miss') {
           hit.st = 'miss';
           hit.ver = (hit.ver || 0) + 1;
+          noteMiss(hit);
           render();
         }
       }
@@ -569,6 +602,14 @@
         }
         const prev = _waitSeen[myIdHere];
         _waitSeen[myIdHere] = pos;
+        if (pos === -1 && prev !== -1) {
+          // 一次性提醒：轮到我了 —— **首见即在播**（刚打开 / 刚重连拿到 retain
+          // 回放）也喊这一声，这是成功那一下唯一的告知；sayOnce 保证同一只喊
+          // 一次，重连回放不会复读。实测 03:41 晴天开播时恰好断线重连，首见
+          // 即 -1，被下面「见过了才说话」的闸吃掉 —— 成功提醒不许吃。
+          sayOnce('onair:' + myIdHere, '《' + title + '》开播啦 ♪');
+          return;
+        }
         if (prev === undefined || prev === pos) return;   // 没变化不说话
         if (pos === -2) {
           // 从队里消失了：已经备好（正常）或被别人删了
@@ -590,38 +631,39 @@
       });
     }
 
-    function renderWall(list) {
-      /* 创意⑤：点播墙。听众点的歌就是节目单 —— 能翻到「我点的播过了」，
-       * 也能翻到别人点过的歌。这是电台跟一个播放器最不一样的地方。 */
-      const box = $('wallList');
-      const cnt = $('wallCount');
-      const empty = $('wallEmpty');
-      if (!box) return;
-      const arr = Array.isArray(list) ? list.filter((x) => x && x.title).slice(0, 40) : [];
-      if (cnt) cnt.textContent = arr.length ? '（' + arr.length + '）' : '';
-      if (empty) empty.hidden = arr.length > 0;
-      const sig = arr.map((x) => String(x.id || x.title)).join('|');
-      if (box.getAttribute('data-sig') === sig) return;   // 同一份别重画
-      box.setAttribute('data-sig', sig);
-      box.textContent = '';
-      arr.forEach((it) => {
-        const li = document.createElement('li');
-        li.className = 'wall-item';
-        const b = document.createElement('b');
-        b.textContent = String(it.title || '').slice(0, 14);
-        li.appendChild(b);
-        if (it.artist) {
-          const a = document.createElement('small');
-          a.className = 'wall-artist';
-          a.textContent = String(it.artist).slice(0, 10);
-          li.appendChild(a);
+    /* ---------------- 撤单清扫（v1.21.9 一次性提醒的后一半） ----------------
+     * 两条撤单线：
+     *  ① miss 条目 20 秒宽限到点 → 墓碑撤下（noteMiss 已把 toast 说过了）；
+     *     宽限期内若又来了新鲜进度 = 结论翻案，不起表不撤。
+     *  ② 播过的条目 → air 台账（wall 的 id 集合，服务端仍下发）里有、又
+     *     不是正在播的这首 → 墓碑撤下。air 消息到达时实时走这条；离线期间
+     *     播掉的，下一条 air 的台账兜住 → 静默清（都播完一阵了，不补提醒）。
+     * 墓碑靠快照同步全网一起清 —— 队列里永远只剩「还没出结果」的。 */
+    function sweepDone() {
+      if (!items.size) return false;
+      const now = Date.now();
+      const cur = airState ? airState.id : '';
+      const wallIds = Object.create(null);
+      if (airState && Array.isArray(airState.wall)) {
+        airState.wall.forEach((w) => { if (w && w.id) wallIds[String(w.id)] = true; });
+      }
+      let changed = false;
+      items.forEach((it) => {
+        if (!it || it.del) return;
+        if (it.st === 'miss') {
+          // 只有**新的**进度（阶段不是 miss）才算翻案；miss 自己那条进度就是
+          // 结论本身，拿它挡撤单会让条目赖到进度过期（6 分钟）才走 —— 实测
+          // 「没找到」147 秒后还挂在列表上，正是这个坑。
+          const mp = freshProg(it.id);
+          if (mp && mp.stage !== 'miss') { it.missAt = 0; return; }   // 翻案：别撤
+          if (!it.missAt) { it.missAt = now; return; }       // 本次才看见：起表
+          if (now - it.missAt > MISS_GRACE) changed = tombstone(it) || changed;
+          return;
         }
-        const w = document.createElement('small');
-        w.className = 'wall-who';
-        w.textContent = it.who ? String(it.who).slice(0, 8) + ' 点的' : '电台垫场';
-        li.appendChild(w);
-        box.appendChild(li);
+        if (cur && it.id !== cur && wallIds[it.id]) changed = tombstone(it) || changed;
       });
+      if (changed) { publish(); render(); }
+      return changed;
     }
 
     function onAirMsg(j) {
@@ -633,6 +675,7 @@
       if (!id || !/^https?:\/\//i.test(url) || !startedAt) return false;
       const dur = Number(j.dur) || 0;
       if (dur && (dur < 1 || dur > 6 * 3600)) return false;
+      const prevId = airState ? airState.id : '';
       airState = {
         id: id, url: url, dur: dur, startedAt: startedAt,
         ver: Number(j.ver) || 0,
@@ -643,9 +686,16 @@
         // 台词是「点播归属+歌曲背景」的分层长句，80 字会截掉后半句
         ann: typeof j.ann === 'string' ? j.ann.slice(0, 240) : '',
         next: normNext(j.next),      // 「接下来」歌单（客户端那栏就靠它）
-        wall: Array.isArray(j.wall) ? j.wall : [],   // 创意⑤ 点播墙
+        wall: Array.isArray(j.wall) ? j.wall : [],   // 播出台账（撤单清扫用）
       };
-      renderWall(airState.wall);
+      /* 一次性提醒（v1.21.9）：上一首播完了 —— 我点的那单立刻撤下，不留在
+       * 队列里当历史；别人的同理（队列只放「还没轮到」的）。撤在
+       * queuePromise 之前，免得它把「播完」误报成「备好了，马上到」。 */
+      if (prevId && prevId !== id) {
+        const pi = items.get(prevId);
+        if (pi && !pi.del && tombstone(pi)) publish();
+      }
+      sweepDone();     // wall 台账兜底：离线期间播过的一并静默撤下
       ensureCatalog();   // 音源地址到位 → 顺手拉曲库（联想/AI 祝福/速点要用）
       render();          // 「正在播」标签跟着换条目
       queuePromise();    // ④ 等待变成内容：轮到我之前就告诉我
@@ -932,32 +982,37 @@
       renderSum(list);
 
       if (reqHint) {
+        const qn = list.filter((x) => x && x.st !== 'miss').length;   // 出结论的不算在队
         if (!list.length) {
           reqHint.textContent = synced
             ? '还没有人点歌，抢个沙发'
             : '未连上点歌台，当前仅本机生效';
         } else if (synced) {
-          reqHint.textContent = '全网同步 · ' + list.length + ' 首在队';
+          reqHint.textContent = '全网同步 · ' + qn + ' 首在队';
         } else {
-          reqHint.textContent = '未连上点歌台，当前仅本机生效 · ' + list.length + ' 首在队';
+          reqHint.textContent = '未连上点歌台，当前仅本机生效 · ' + qn + ' 首在队';
         }
       }
     }
 
-    /* 排队摘要：全网几首 + 你的歌第几位（点歌人最想知道「什么时候轮到我」） */
+    /* 排队摘要：全网几首 + 你的歌第几位（点歌人最想知道「什么时候轮到我」）。
+     * v1.21.9：已出结论（没找到）的**不算在队** —— 它不会再播，拿它报
+     * 「第几位 / 马上开播」是骗人；位次也要把这类条目让开才算准。 */
     function renderSum(list) {
       const sum = $('reqSum');
       if (!sum) return;
       if (!list || !list.length) { sum.hidden = true; return; }
+      const q = list.filter((x) => x && x.st !== 'miss');
+      if (!q.length) { sum.hidden = true; return; }
       let mineIdx = -1;
-      for (let k = 0; k < list.length; k++) {
-        if (list[k].cid === myId && !list[k].del) { mineIdx = k; break; }
+      for (let k = 0; k < q.length; k++) {
+        if (q[k].cid === myId && !q[k].del) { mineIdx = k; break; }
       }
       sum.hidden = false;
       sum.textContent = mineIdx >= 0
-        ? ('全网 ' + list.length + ' 首在队 · 你的歌第 ' + (mineIdx + 1) + ' 位' +
+        ? ('全网 ' + q.length + ' 首在队 · 你的歌第 ' + (mineIdx + 1) + ' 位' +
            (mineIdx === 0 ? '，马上开播' : ''))
-        : ('全网 ' + list.length + ' 首在队 · 点一首排进去，DJ 会安排');
+        : ('全网 ' + q.length + ' 首在队 · 点一首排进去，DJ 会安排');
     }
 
     /* ---------------- 身份 ---------------- */
@@ -1019,7 +1074,7 @@
       reqMask.hidden = false;
       ensureCatalog(true);   // 强制重拉：祝福候选是服务端随机摇的（见 ensureCatalog 说明）
       renderMood();         // 主播性格选中态
-      if (typeof airState === 'object' && airState && airState.wall) renderWall(airState.wall);
+      sweepDone();          // 开窗先清一遍账：播过的/过期的 miss 不该出现在眼前
       render();
       renderChips();
       // 二次打开回顶：上次滚到底部看队列，重开还停在那儿的话，输入框和常听
@@ -1330,6 +1385,8 @@
     snapTimer = setInterval(() => { if (synced) publish(); }, SNAP_EVERY);
     // 状态文案每 15 秒刷一次：searching 超时判定靠它变
     setInterval(render, 15000);
+    // 撤单清扫每 15 秒一遍：miss 宽限到点撤下、播过的条目清账（见 sweepDone）
+    setInterval(sweepDone, 15000);
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden && synced) publish();
     });
@@ -1347,6 +1404,8 @@
       clearProg: clearProg,
       /* 云开播（fm891-radio/air）：验 schema 校验与向 app 转发 */
       air: () => airState, onAirMsg: onAirMsg,
+      /* 一次性提醒（v1.21.9）：miss 提醒 / 撤单清扫要能被测试直接驱动 */
+      sweepDone: sweepDone, noteMiss: noteMiss, tombstone: tombstone,
       /* 播报闸门要看队列长度才能验（第一条会被立刻取走开始打字，长度变 0） */
       sayQueueLen: () => sayQueue.length,
       /* 曲库链路：联想/AI 祝福/速点的数据与行为 */

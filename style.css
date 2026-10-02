@@ -2430,77 +2430,7 @@ body.track-change #cover {
 
 .mood:active { transform: scale(.94) !important; }
 
-/* =====================================================================
-   创意⑤：点播墙
-   ===================================================================== */
-.wall {
-  margin: 4px 0 10px;
-  border-top: 1px solid rgba(255, 255, 255, .08);
-  padding-top: 8px;
-}
-
-.wall > summary {
-  list-style: none;
-  cursor: pointer;
-  font-size: 12px;
-  color: var(--muted);
-  padding: 4px 2px;
-  user-select: none;
-}
-
-.wall > summary::-webkit-details-marker { display: none; }
-.wall[open] > summary { color: var(--text); }
-.wall > summary i { font-style: normal; opacity: .7; }
-
-.wall-list {
-  list-style: none;
-  margin: 4px 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  max-height: 32vh;
-  overflow-y: auto;
-}
-
-.wall-item {
-  display: flex;
-  align-items: baseline;
-  gap: 7px;
-  padding: 6px 9px;
-  border-radius: 9px;
-  background: rgba(255, 255, 255, .035);
-  border: 1px solid rgba(255, 255, 255, .055);
-}
-
-.wall-item b {
-  flex: none;
-  font-size: 12px;
-  font-weight: 700;
-  max-width: 45%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.wall-artist {
-  flex: 1;
-  min-width: 0;
-  font-size: 10.5px;
-  color: rgba(34, 211, 238, .8);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.wall-who {
-  flex: none;
-  font-size: 10px;
-  color: var(--muted);
-}
-
-.wall-empty { margin: 4px 0 0; font-size: 11px; color: var(--muted); opacity: .7; }
-.wall-empty[hidden] { display: none !important; }
+/* v1.21.9：点播墙（创意⑤）撤下 —— 播过的歌改一次性提醒，墙的样式一并删。 */
 
 /* —— v1.21.2 修：主播性格那一行塌了 ——
    .mood 命中了 .req-form button 的 width:100%（那条规则给「点歌」主按钮写的，
@@ -2712,13 +2642,12 @@ body.track-change #cover {
 .player { align-content: space-between; }
 
 /* ============ ⑥ 点歌抽屉：4 层嵌套滚动收敛成 1 层（用户：「流程别扭」） ==
-   原来：.dialog 自己滚、.req-list 再滚 40vh、.wall-list 再滚 32vh、外面
-   还有一层遮罩 —— 想点到底部的「确定 / 收起」得连滚两层，而且列表自带
-   上限，点几首就把弹窗撑出屏。现在只有抽屉一层滚：标题行（带 ✕）吸顶、
-   底部「收起」吸底，随时点得到；列表不再自己设上限，跟着抽屉一起走。 */
+   原来：.dialog 自己滚、.req-list 再滚 40vh、点播墙（v1.21.9 已撤）再滚
+   32vh、外面还有一层遮罩 —— 想点到底部的「确定 / 收起」得连滚两层，而且
+   列表自带上限，点几首就把弹窗撑出屏。现在只有抽屉一层滚：标题行（带 ✕）
+   吸顶、底部「收起」吸底，随时点得到；列表不再自己设上限，跟着抽屉一起走。 */
 .req-dialog { max-height: 86vh; }
 .req-list { max-height: none !important; overflow-y: visible !important; }
-.wall-list { max-height: none !important; overflow: visible !important; }
 .req-dialog .dialog-head {
   position: sticky;
   top: 0;
