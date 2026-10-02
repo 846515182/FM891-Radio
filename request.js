@@ -206,9 +206,9 @@
     /* ---------------- 点歌 ---------------- */
     function addRequest(title, to, msg) {
       const t = String(title || '').trim().slice(0, 30);
-      if (!t) { R.toast('先输入歌名'); return; }
+      if (!t) { R.toast('先输入歌名'); return false; }
       const now = Date.now();
-      if (now - lastAddAt < MIN_GAP) { R.toast('点太快啦，缓一缓～'); return; }
+      if (now - lastAddAt < MIN_GAP) { R.toast('点太快啦，缓一缓～'); return false; }
       lastAddAt = now;
 
       // 同一首还在队列里就别重复点（不同人点同一首 = 跟唱，允许）
@@ -216,7 +216,7 @@
       items.forEach((it) => {
         if (!it.del && it.mine && norm(it.title) === norm(t)) dup = true;
       });
-      if (dup) { R.toast('你已经点过《' + t + '》啦'); return; }
+      if (dup) { R.toast('你已经点过《' + t + '》啦'); return false; }
 
       const sTo = String(to || '').trim().slice(0, 16);
       const sMsg = String(msg || '').trim().slice(0, 60);
@@ -249,6 +249,7 @@
       // 客户端不再自己扫台 —— 进度与结果都从 p/* 和 r/* 频道来。
       say('收到 ' + it.who + ' 点的《' + t + '》' +
         (sTo ? '，送给 ' + sTo : '') + '，云端主播马上安排 🎵');
+      return true;   // 真的入队了，调用方才可以清空输入框
     }
 
     /* 归一化：配对「歌名」用（服务端仓库键 norm_key 同款规则） */
@@ -998,11 +999,20 @@
       if (typeof airState === 'object' && airState && airState.wall) renderWall(airState.wall);
       render();
       renderChips();
+      // 二次打开回顶：上次滚到底部看队列，重开还停在那儿的话，输入框和常听
+      // chips 全在屏幕外 —— 看着就像「抽屉是空的 / 打不开」。
+      try { const d = reqMask.firstElementChild; if (d) d.scrollTop = 0; } catch (_) { /* 忽略 */ }
+      // 联想下拉别带着上次的状态闪进来（关抽屉时也可能没来得及收）
+      try { const ac = document.getElementById('reqAc'); if (ac) ac.hidden = true; } catch (_) { /* 忽略 */ }
       // 每次打开回填当前昵称：用户可能在别处改过，或本地被清过
       if (nickInput && !nickInput.value) { try { nickInput.value = myName(); } catch (_) { /* 忽略 */ } }
       setTimeout(() => { try { reqInput && reqInput.focus(); } catch (_) { /* 忽略 */ } }, 60);
     }
-    function close() { if (reqMask) reqMask.hidden = true; }
+    function close() {
+      if (reqMask) reqMask.hidden = true;
+      // 关的时候把联想收掉：留着的话，遮罩透明度变化会把它「印」在背景上一帧
+      try { const ac = document.getElementById('reqAc'); if (ac) ac.hidden = true; } catch (_) { /* 忽略 */ }
+    }
     /* 安卓返回键要能先关弹窗。以前 MainActivity 里 canGoBack() 恒为 false（只有一个
      * file:// 页面），返回键直接 super.onBackPressed() 把 App 关了 —— 点歌台开着
      * 的时候按返回＝退出，用户以为按钮坏了。MainActivity 通过 evaluateJavascript
@@ -1104,10 +1114,14 @@
         const v = reqInput ? reqInput.value : '';
         const to = reqTo ? reqTo.value : '';
         const msg = reqMsg ? reqMsg.value : '';
-        addRequest(v, to, msg);
-        if (reqInput) reqInput.value = '';
-        if (reqTo) reqTo.value = '';
-        if (reqMsg) reqMsg.value = '';
+        // 只有真的入队了才清空：addRequest 有三条拒绝路径（空歌名 / 3 秒冷却 /
+        // 已点过同一首），以前不管拒没拒都清 —— 连点两首时第二首的歌名刚敲完
+        // 就被吞掉，用户只看到一句 toast，输入框却空了。
+        if (addRequest(v, to, msg)) {
+          if (reqInput) reqInput.value = '';
+          if (reqTo) reqTo.value = '';
+          if (reqMsg) reqMsg.value = '';
+        }
       });
     }
     if (nickInput) {
