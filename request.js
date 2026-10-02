@@ -355,7 +355,7 @@
 
     function stepOf(it) {
       if (it.st === 'ready' || it.st === 'onair') return 5;
-      const p = (prog && prog[it.id]) || null;
+      const p = (prog && prog.get(it.id)) || null;
       const s = p && p.stage;
       if (s) return STAGE_STEP[s] != null ? STAGE_STEP[s] : 1;
       return 0;   // 刚提交，还在等云端接单
@@ -882,8 +882,11 @@
         }
         frag.appendChild(li);
       });
-      reqList.innerHTML = '';
+      const _st = reqList.scrollTop;      // 整表重建先存滚动位置：不存的话，
+      reqList.innerHTML = '';              // 每次 MQTT/定时刷新都把列表甩回顶部，
+                                            // 刚点完版本就「看着像没反应」
       reqList.appendChild(frag);
+      reqList.scrollTop = _st;   // 还原（用户正在看的位置）
       renderSum(list);
 
       if (reqHint) {
