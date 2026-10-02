@@ -1698,10 +1698,14 @@ footer { margin-top: 14px; }
   box-shadow: 0 0 10px rgba(34, 211, 238, .35);
 }
 
-.brand-logo { font-size: 16px; }
+/* .brand-logo / .slogan 都必须用**显式 margin** 留间距：实测这台 WebView 的
+   flex `gap` 根本不参与布局（computed 显示 8px/9px，实际子元素间距 0 —— 运行时
+   实验证明 gapPushed=0），说明它低于 Chrome 84（flex gap 是 84 才加入的）。
+   以前只写 gap，于是台标胶囊的光晕直接压在 slogan 第一个字上。 */
+.brand-logo { font-size: 16px; margin-left: 8px; }
 
 .slogan {
-  margin: 0;
+  margin: 0 0 0 14px;
   font-size: 9.5px;
   letter-spacing: .5px;
   opacity: .62;
@@ -2766,4 +2770,39 @@ body.track-change #cover {
   border-radius: 50%;
   /* 与父盒的 border-radius 一致，避免圆角外溢出方角 */
   pointer-events: none;
+}
+
+
+/* ============ v1.21.7 · flex `gap` 在这台 WebView 不生效的兜底 ============
+   CDP 运行时实验证明：computed 显示 columnGap=9px/8px，但子元素实际间距
+   是 0 —— 这台 WebView 低于 Chrome 84（flex gap 是 84 才加入的），跟前面
+   inset(87+) / aspect-ratio(88+) / 动态视口高度(108+) 一样属于「写了等于
+   没写」。文件
+   别处的 chips / mood / dialog-actions 都另有 margin 兜底所以看不出问题，
+   下面这些地方原本**只靠 gap 留白**，实测元素全贴在一起（台标光晕压住
+   slogan、排队序号贴着歌名、音量图标贴着滑杆、主播表情贴着文案）——
+   逐个补显式 margin。 */
+.q-no { margin-right: 5px; }
+.meta-chip + .meta-chip { margin-left: 6px; }
+.vod-row > * + * { margin-left: 9px; }
+.volume input[type="range"] { margin-left: 10px; margin-right: 10px; }
+.dj-bubble .dj-face { margin-right: 10px; }
+
+
+/* ============ ⑨ 播报文案溢出压到心愿条（截图里框底那半行字） ============
+   line-clamp(3) 在这台 WebView 只把**盒子高度**限到 3 行（省略号也加了），
+   但 overflow: hidden 对 -webkit-box 的内容不裁 —— 实测长文案 scrollHeight
+   116 / clientHeight 84，第 4、5 行画到盒子外 32px，正好压在心愿条上。
+   改成普通 block + max-height 硬裁：多行省略号拿不到，但绝不再溢出。
+   还有个坑：overflow 裁的是 **padding box**，所以 padding-bottom 那 9px 会
+   变成漏网区（第 4 行正好露在内边距里，看着还是半行字）。底部内边距挪到
+   margin，max-height 只留「3 行 + 顶部 padding + border」，第 4 行整行落在
+   裁切线之外，第 3 行靠行框自带的上下留白完整显示。 */
+.stage .desc {
+  display: block;
+  -webkit-box-orient: horizontal;
+  padding: 9px 12px 0;
+  margin-bottom: 12px;
+  max-height: calc(3 * 1.7em + 11px);
+  overflow: hidden;
 }
