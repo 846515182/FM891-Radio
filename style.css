@@ -38,7 +38,11 @@ body {
 
 .bg-glow {
   position: fixed;
-  inset: 0;
+  /* inset: 0 展开 —— 这套 WebView 不认 inset 简写（Chrome 87+），整条会作废 */
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   pointer-events: none;
   background:
     radial-gradient(60vw 60vw at 15% -10%, rgba(139, 92, 246, 0.38), transparent 60%),
@@ -225,7 +229,11 @@ body {
 /* 黑胶唱片封面环 */
 .cover-ring {
   position: absolute;
-  inset: 13%;
+  /* inset: 13% 展开 —— 这套 WebView 不认 inset 简写（Chrome 87+），整条会作废 */
+  top: 13%;
+  right: 13%;
+  bottom: 13%;
+  left: 13%;
   border-radius: 50%;
   background:
     repeating-radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.06) 0 1px, transparent 1px 6px),
@@ -237,7 +245,11 @@ body {
 .cover-ring::after {
   content: '';
   position: absolute;
-  inset: 31%;
+  /* inset: 31% 展开 —— 这套 WebView 不认 inset 简写（Chrome 87+），整条会作废 */
+  top: 31%;
+  right: 31%;
+  bottom: 31%;
+  left: 31%;
   border-radius: 50%;
   background: var(--grad);
   box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.25), 0 4px 14px rgba(0, 0, 0, 0.4);
@@ -622,7 +634,11 @@ footer {
    主界面一直看得见；遮罩也淡了。 */
 .dialog-mask {
   position: fixed;
-  inset: 0;
+  /* inset: 0 展开 —— 这套 WebView 不认 inset 简写（Chrome 87+），整条会作废 */
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   z-index: 60;
   /* 淡很多：以前 0.72 + blur(4px) 把整台糊掉，看着就是「被关起来了」 */
   background: rgba(5, 3, 14, 0.42);
@@ -640,7 +656,6 @@ footer {
   width: 100%;
   /* 内容再长也只在抽屉内部滚动，标题（带 ✕）和底部按钮永远在屏内、滚得到 */
   max-height: 76vh;
-  max-height: 76dvh;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
@@ -1101,7 +1116,7 @@ footer {
   .req-st { font-size: 10px; padding: 3px 7px; }
 }
 
-/* ================= 拾光电台 v1.19 · 界面重做 ================= */
+/* ================= 时光电台 v1.19 · 界面重做 ================= */
 
 /* —— 头部统计（在线 + 曲库）—— */
 .pill-row {
@@ -1345,7 +1360,11 @@ body.playing .stage h1 {
 .cover::after {
   content: '';
   position: absolute;
-  inset: 0;
+  /* inset: 0 展开 —— 这套 WebView 不认 inset 简写（Chrome 87+），整条会作废 */
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   z-index: 4;
   background: repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.055) 0 1px, transparent 1px 4px);
   pointer-events: none;
@@ -2076,7 +2095,7 @@ body { overscroll-behavior-y: none; }
 
 .app {
   min-height: 100vh;
-  min-height: 100dvh;
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
 }
@@ -2097,10 +2116,10 @@ body { overscroll-behavior-y: none; }
   min-height: 0;
 }
 
-/* 封面吃到剩余高度：不用死 px，窗口多高它就长多高（上限 40dvh） */
+/* 封面吃到剩余高度：不用死 px，窗口多高它就长多高（上限 40vh） */
 #cover {
   width: auto;
-  height: min(38dvh, 260px);
+  height: min(38vh, 260px);
   max-width: 100%;
   aspect-ratio: 1;
   margin: 6px auto 0;
@@ -2244,7 +2263,11 @@ footer { flex: none; margin-top: 10px; }
 #cover::before {
   content: '';
   position: absolute;
-  inset: -7px;
+  /* inset: -7px 展开 —— 这套 WebView 不认 inset 简写（Chrome 87+），整条会作废 */
+  top: -7px;
+  right: -7px;
+  bottom: -7px;
+  left: -7px;
   border-radius: 50%;
   background: conic-gradient(from 0deg,
     hsl(var(--cover-hue) 85% 62% / .55),
@@ -2283,7 +2306,11 @@ footer { flex: none; margin-top: 10px; }
 .bg-glow::after {
   content: '';
   position: absolute;
-  inset: 0;
+  /* inset: 0 展开 —— 这套 WebView 不认 inset 简写（Chrome 87+），整条会作废 */
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   background:
     radial-gradient(58vw 46vw at 18% -6%, hsl(var(--cover-hue) 80% 55% / .34), transparent 62%),
     radial-gradient(46vw 42vw at 108% 24%, hsl(calc(var(--cover-hue) + 55) 80% 58% / .22), transparent 60%);
@@ -2323,7 +2350,7 @@ body.track-change #cover {
 /* =====================================================================
    v1.21.1 修：封面太大，把左边排队栏压住了
    用户原话：「中间那个头像真鸡巴大啊 排队歌曲都被遮住了」。
-   根因：封面按 38dvh 算尺寸，在窄屏上它比「右栏可用宽度」还宽，
+   根因：封面按 38vh 算尺寸，在窄屏上它比「右栏可用宽度」还宽，
    加上光环 inset:-7px + blur(7px) 就压到左边的排队栏上。
    改三处：尺寸按**右栏宽度和高度里更小的那个**收；排队栏升到更高层；
    光环收窄。窄屏另外再降一档。
@@ -2331,15 +2358,15 @@ body.track-change #cover {
 
 /* 封面：min(高度, 宽度) 两个都限死，宽高自动保持 1:1 */
 #cover {
-  height: min(30dvh, 300px);
+  height: min(30vh, 300px);
   width: auto;
   max-width: 100%;
-  max-height: 30dvh;
+  max-height: 30vh;
   aspect-ratio: 1;
 }
 
 /* 光环别伸出去那么多 */
-#cover::before { inset: -4px; filter: blur(5px); }
+#cover::before { top: -4px; right: -4px; bottom: -4px; left: -4px; filter: blur(5px); }
 
 /* 排队栏永远压在封面上层，不被压住 */
 .queue-rail {
@@ -2351,7 +2378,7 @@ body.track-change #cover {
 
 /* 窄屏（排队栏 + 封面挤在一起的那种）封面再收一档 */
 @media (max-width: 380px), (max-height: 680px) {
-  #cover { height: min(24dvh, 168px); max-height: 24dvh; }
+  #cover { height: min(24vh, 168px); max-height: 24vh; }
 }
 
 /* =====================================================================
@@ -2510,7 +2537,7 @@ body.track-change #cover {
 /* =====================================================================
    v1.21.2 修二：封面还是太大，排队列表被压住
    用户原话：「中间你那个头像还是很大 排队哪个列表被覆盖了」。
-   前一版只把封面调到 min(30dvh,300px) + 排队栏 z-index:3 —— 层叠上不压了，
+   前一版只把封面调到 min(30vh,300px) + 排队栏 z-index:3 —— 层叠上不压了，
    但**尺寸还是压**：300px 的圆在 360px 宽的屏上、光环再外扩一圈，左边缘就啃到
    排队栏，条目右半被盖（截图：第 1 条右边缘贴着封面白圆）。
    这次两件事一起做：
@@ -2524,17 +2551,17 @@ body.track-change #cover {
 
 #cover {
   /* 两个上限取小的那个：屏高 30%、列宽 78%。列宽才是「会不会压到排队栏」的决定因素。
-     只给 width（两个上限都是确定值：% 相对列宽、dvh 相对视口），高度交给
-     aspect-ratio —— **不要**写 height: min(30dvh, 78%)，那个 78% 相对父容器
+     只给 width（两个上限都是确定值：% 相对列宽、vh 相对视口），高度交给
+     aspect-ratio —— **不要**写 height: min(30vh, 78%)，那个 78% 相对父容器
      高度，而父容器高度由内容决定，是循环依赖（浏览器会解析成 0，封面消失）。 */
   width: auto;
   max-width: 78%;
-  max-height: 30dvh;
+  max-height: 30vh;
   aspect-ratio: 1;
   margin: 6px auto 0;
 }
 
-#cover::before { inset: -3px; filter: blur(4px); }
+#cover::before { top: -3px; right: -3px; bottom: -3px; left: -3px; filter: blur(4px); }
 
 .queue-rail { padding-top: 2px; }
 .queue-rail-list { gap: 4px; }
@@ -2548,14 +2575,14 @@ body.track-change #cover {
 }
 
 /* —— v1.21.2 修三：封面被我上一条写没了 ——
-   错在哪：`height: min(30dvh, 78%)` 里的 78% 是相对**父容器高度**，而父容器
+   错在哪：`height: min(30vh, 78%)` 里的 78% 是相对**父容器高度**，而父容器
    （.stage）高度由内容决定 —— 循环依赖，浏览器解析成 0，封面整个消失
    （截图：歌名左边只剩一个小紫点）。
-   正确写法：只给 width，两个上限都是确定值（78% 相对列宽、30dvh 相对视口），
+   正确写法：只给 width，两个上限都是确定值（78% 相对列宽、30vh 相对视口），
    高度交给 aspect-ratio 推。
    同理 max-width/max-height 里的百分比也一并去掉，别再引入循环。 */
 #cover {
-  width: min(78%, 30dvh);
+  width: min(78%, 30vh);
   height: auto;
   aspect-ratio: 1;
   max-width: none;
@@ -2564,11 +2591,11 @@ body.track-change #cover {
 }
 
 @media (max-width: 340px) {
-  #cover { width: min(72%, 26dvh); }
+  #cover { width: min(72%, 26vh); }
 }
 
 /* —— v1.21.2 修四（终）：封面靠右对齐，排队栏靠左 —— 结构上不可能再撞 ——
-   前面几版都在「调尺寸」上打转（30dvh → 28dvh → min(78%,30dvh)…），可封面
+   前面几版都在「调尺寸」上打转（30vh → 28vh → min(78%,30vh)…），可封面
    是居中的：它在 stage 里居中 = 左边必然往排队栏那边溢出多少，全看列宽差多少。
    只要居中，两者就有「可能相撞」的关系。
    改成右对齐（margin-left:auto），封面左边 = stage 右边缘 − 封面宽，永远在
@@ -2576,5 +2603,167 @@ body.track-change #cover {
    ------------------------------------------------------------------ */
 #cover {
   margin: 6px 0 0 auto;      /* 靠右，别居中 */
-  width: min(72%, 26dvh);
+  width: min(72%, 26vh);
+}
+
+
+/* ============ 封面尺寸 · 根因修复（v1.21.5） ============
+   中间那片空洞查了三层才到底，两个坑叠在一起：
+
+   1) 这台机器的 WebView（Android 30 / Chrome ~90）**不支持 aspect-ratio** ——
+      实测 getComputedStyle(el).aspectRatio === undefined。
+      所以「给 width 再用 aspect-ratio 自动算高」这条路从一开始就是死的，
+      高度只剩 0，封面塌成一条看不见的线。
+
+   2) height 里写百分比会形成**循环依赖**：72% 相对父容器 .stage 的高度，
+      而 .stage 的高度又由内容（含这个封面）撑起 —— 浏览器解不出这个环，
+      按规范直接解析成 0。
+      （同一条教训上面的注释里已经写过一次，这次 width 里又带了 %，
+       属于「读过自己写的警告却没拦住」，所以在此钉死。）
+
+   唯一干净解：两维都用纯 vh、flex:none 不参与压缩、靠右对齐。
+   width 用 min(vh, 100%) 是安全的 —— 它相对父**宽**，而父宽来自 grid 列宽，
+   不依赖高度，不构成环。
+   ------------------------------------------------------- */
+#cover {
+  flex: none;                        /* 别被 column-flex 压到 0 */
+  width: min(26vh, 100%);            /* 宽可被容器收，但不牵扯高度 */
+  height: 26vh;                      /* 纯 vh：没有 % 、也不依赖 aspect-ratio */
+  margin: 6px 0 0 auto;              /* 靠右：结构上不与左侧排队栏相撞 */
+  aspect-ratio: 1;                   /* 支持它的浏览器顺带用；不支持就忽略 */
+}
+
+/* ============ v1.21.5 视觉返工 · ① 撤掉卡角的「科技角标」 ============
+   用户反馈界面上有两个来路不明的青色空方框。查明是 .player::before/::after：
+   16px 见方、两道 1.5px 描边加辉光，本意是取景框的角，但它俩悬在卡片的
+   空白处、不贴任何内容，在深色底上读起来就是一个没画完的方框 —— 跟 bug
+   没有区别。撤掉。 */
+.player::before,
+.player::after { content: none !important; display: none !important; }
+
+/* ============ ② 排队栏：从「浮着的裸条目」改成一张正经侧卡 ============
+   原来没有卡底、条目各画各的框、也没有高度上限 —— stage 横跨两列，排队栏
+   是 z-index:3 浮在它上面的，条目一多就会往下长到标题那一行压住文案。
+   现在：统一卡底 + 左侧青色引导线；高度封顶在封面那一段（封面恒为 26vh），
+   多出来的在栏内自己滚，排多少首都越不了界。 */
+.queue-rail {
+  padding: 7px 6px 6px;
+  max-height: calc(26vh + 2px);      /* 与封面等高：再多一条就撞到下面的标题 */
+  overflow: hidden;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(34, 211, 238, 0.07), rgba(255, 255, 255, 0.03));
+  border: 1px solid rgba(34, 211, 238, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.queue-rail-h {
+  margin-bottom: 5px;
+  letter-spacing: 2px;
+  color: rgba(34, 211, 238, 0.85);
+}
+.queue-rail-list {
+  max-height: calc(26vh - 30px);     /* 扣掉卡的内边距 + 表头 */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  gap: 4px;
+}
+.queue-rail-list::-webkit-scrollbar { width: 0; height: 0; }
+.q-item {
+  padding: 4px 5px 5px;
+  gap: 5px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 0;
+  border-left: 2px solid rgba(34, 211, 238, 0.45);
+}
+/* 侧栏加宽 8px：卡底和内边距吃掉了一截，歌名要留够字宽才不会挤折行 */
+.player { grid-template-columns: minmax(0, 112px) minmax(0, 1fr); }
+
+/* ============ ③ 封面加三道环：把圆形轮廓「勾」出来 ============
+   光一张图贴在深底上没有形；深色留白环 + 青色细环 + 紫色外环把边界定死，
+   右上角那颗「直播中」胶囊才不会像浮在空中。 */
+#cover {
+  border: 3px solid rgba(255, 255, 255, 0.12);
+  box-shadow:
+    0 0 0 1px rgba(34, 211, 238, 0.55),
+    0 0 0 5px rgba(16, 11, 38, 0.95),
+    0 0 0 6.5px rgba(167, 139, 250, 0.4),
+    0 18px 46px rgba(139, 92, 246, 0.45) !important;
+}
+
+/* ============ ④ 播报文案框：border-image 的锅 ============
+   原规则写了 border-left: 3px solid transparent + border-image: linear-
+   gradient(...) 1 —— 但 border-image 会**忽略 border-radius 铺满四边**，
+   本意是「只给左边一条强调线」，实际渲染成一整圈亮紫框把文案包死
+   （截图里那个突兀的紫框就是它）。撤掉 border-image，改用实色左边线。 */
+.stage .desc {
+  border-image: none;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-left: 3px solid #a78bfa;
+}
+
+/* ============ ⑤ 一屏铺满：把剩余竖向空间摊到行距里 ============
+   原来 align-content: center 把空白全堆在上下两头（底部空出 46px 死区）；
+   space-between 让封面区 / 进度 / 音量 / 点歌条均匀占满整卡。内容变多时
+   空隙自动收到 0，不会因此产生滚动。 */
+.player { align-content: space-between; }
+
+/* ============ ⑥ 点歌抽屉：4 层嵌套滚动收敛成 1 层（用户：「流程别扭」） ==
+   原来：.dialog 自己滚、.req-list 再滚 40vh、.wall-list 再滚 32vh、外面
+   还有一层遮罩 —— 想点到底部的「确定 / 收起」得连滚两层，而且列表自带
+   上限，点几首就把弹窗撑出屏。现在只有抽屉一层滚：标题行（带 ✕）吸顶、
+   底部「收起」吸底，随时点得到；列表不再自己设上限，跟着抽屉一起走。 */
+.req-dialog { max-height: 86vh; }
+.req-list { max-height: none !important; overflow-y: visible !important; }
+.wall-list { max-height: none !important; overflow: visible !important; }
+.req-dialog .dialog-head {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  margin: 0 -16px;
+  padding: 8px 16px 10px;
+  background: #241a4f;
+  box-shadow: 0 10px 14px -10px rgba(0, 0, 0, 0.75);
+}
+.req-dialog .dialog-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  margin: 0 -16px;
+  padding: 14px 16px 6px;
+  background: linear-gradient(180deg, rgba(21, 14, 49, 0), #150e31 40%);
+}
+
+/* ============ ⑦ 触摸目标 + 吸底遮挡（点歌台实测数据） ============
+   实测：曲库常听 chips 只有 29px 高、右上 ✕ 只有 32px —— 指头点不中，
+   这也是用户说「框太小」漏掉的一角。统一抬到 40 / 44px。
+   另外两个实测出来的小毛病：
+     · 这台 WebView 用的是**经典滚动条**（不是 overlay），会在抽屉右侧
+       横向吃掉 8px 宽度（标题行实测 385 而不是 393）；
+     · 吸底「收起」原是半透明渐变，滚动过程中会把正从后面滑过的候选行
+       压糊 —— 改成不透明底色，内容从它后面滑过就干干净净。 */
+.req-chips .chip,
+.ac-item {
+  min-height: 40px;
+}
+.dialog-x {
+  width: 44px;
+  height: 44px;
+  font-size: 17px;
+}
+.req-dialog::-webkit-scrollbar { width: 0 !important; height: 0 !important; }
+.req-dialog .dialog-actions {
+  background: #150e31;
+  box-shadow: 0 -12px 18px -12px rgba(0, 0, 0, 0.9);
+}
+
+
+/* 封面图本体：铺满圆形盒子。走 <img> 不走 background（原因见 index.html 注释）。 */
+#cover .cover-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  /* 与父盒的 border-radius 一致，避免圆角外溢出方角 */
+  pointer-events: none;
 }

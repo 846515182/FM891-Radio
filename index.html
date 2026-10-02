@@ -42,6 +42,10 @@
 
       <div class="stage">
         <div class="cover" id="cover">
+          <!-- 用 <img> 而不是 CSS background：实测这套 WebView 里
+               file:// 的 background-image 不渲染（同一张图走 <img> 正常），
+               而 background 方案一旦不画，封面就只剩一个空盒子。 -->
+          <img class="cover-img" id="coverImg" src="icons/dj-avatar.png" alt="主播" />
           <span class="status" id="status">正在接通直播…</span>
           <div class="cover-ring" aria-hidden="true"></div>
           <svg class="note" viewBox="0 0 24 24" aria-hidden="true">

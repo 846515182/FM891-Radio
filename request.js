@@ -1,4 +1,4 @@
-/* 拾光电台 FM89.1 — 在线点歌（纯点播版，电台台单已下架）
+/* 时光电台 — 在线点播（纯点播版，电台台单已下架）
  * ============================================================================
  * 【这一版做什么】
  *  1. 多人同步点歌队列：每个客户端把自己看到的**全量**队列 retain 到
@@ -35,9 +35,11 @@
 
     /* ---------------- 常量 ---------------- */
     const Q_NS = 'fm891-radio/q';
+    // 与 app.js 的在线通道保持同一批（顺序也要一致，否则两边可能停在不同线路上）；
+    // 同样必须与 server.py 的 BROKERS 完全同集，原因见 app.js 那处注释。
     const BROKERS = [
-      'wss://broker.emqx.io:8084/mqtt',
       'wss://test.mosquitto.org:8081/mqtt',
+      'wss://broker.emqx.io:8084/mqtt',
     ];
     const SNAP_EVERY = 30000;    // 周期性重发快照：晚加入的人靠 retain 一次拿全
     const GC_TOMB = 20 * 60000;  // 墓碑保留 20 分钟（够慢速的对端收到）
@@ -637,6 +639,7 @@
     /* ---------------- MQTT 同步 ---------------- */
     let client = null;
     let brokerIdx = 0;
+    let lastSwitchAt = 0;   // 换线冷却（同 app.js）：错误风暴时别疯狂重建连接
     let myTopic = '';
     let snapTimer = null;
 
@@ -729,11 +732,19 @@
         // 云开播（retain 的「此刻在放」，单主题不是子树）
         if (topic === AIR_NS) onAirMsg(j);
       });
-      c.on('error', () => { /* 静默，交给重连/换线 */ });
+      c.on('error', () => {
+        // 秒切：没建立起来的连接（DNS 被 fake-IP 污染 = 秒拒）不等 9 秒 guard。
+        // 已同步过（synced）的交给 close/reconnect 自己恢复，不抢重试。
+        if (client !== me || synced) return;
+        nextBroker();
+      });
       c.on('close', () => { if (client === me) { synced = false; render(); } });
     }
 
     function nextBroker() {
+      const _now = Date.now();
+      if (_now - lastSwitchAt < 700) return;   // 冷却：多条线一起秒拒时防连接风暴
+      lastSwitchAt = _now;
       if (client) { try { client.end(true); } catch (_) { /* 忽略 */ } client = null; }
       synced = false;
       brokerIdx += 1;
@@ -882,11 +893,18 @@
         }
         frag.appendChild(li);
       });
-      const _st = reqList.scrollTop;      // 整表重建先存滚动位置：不存的话，
-      reqList.innerHTML = '';              // 每次 MQTT/定时刷新都把列表甩回顶部，
-                                            // 刚点完版本就「看着像没反应」
+      // 整表重建先存滚动位置：不存的话，每次 MQTT/定时刷新都把列表甩回顶部，
+      // 刚点完版本就「看着像没反应」。
+      // v1.21.5：点歌台改成「单层滚动」—— 滚动容器从 reqList 上移到整个抽屉，
+      // reqList 自己不再滚（它恒为 scrollTop 0），所以必须连外层抽屉的位置
+      // 一起存一起还，否则重建那一刻抽屉仍会跳回顶部。
+      const _dlg = (typeof reqList.closest === 'function') ? reqList.closest('.dialog') : null;
+      const _st = reqList.scrollTop;
+      const _dST = _dlg ? _dlg.scrollTop : 0;
+      reqList.innerHTML = '';
       reqList.appendChild(frag);
       reqList.scrollTop = _st;   // 还原（用户正在看的位置）
+      if (_dlg) _dlg.scrollTop = _dST;
       renderSum(list);
 
       if (reqHint) {

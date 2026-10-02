@@ -1,5 +1,5 @@
-/* 拾光电台 FM89.1 — Service Worker（应用外壳离线缓存） */
-const CACHE = 'fm891-v44';
+/* 时光电台 — Service Worker（应用外壳离线缓存） */
+const CACHE = 'fm891-v45';
 
 const SHELL = [
   './',

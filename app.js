@@ -1,8 +1,8 @@
 'use strict';
 
 /* ============================================================
- * 拾光电台 FM89.1 —— 频道配置
- * 品牌：拾光电台 · 拾起耳朵里的好时光
+ * 时光电台 —— 频道配置
+ * 品牌：时光电台 · 拾起耳朵里的好时光
  * 全国台单 v1.14：共 887 路，全部为国内直播源（lhttp.qtfm.cn 稳定平台），
  * 每一路都经过「手机 UA + 实收字节 + 有效码率 ≥ 40kbps」门禁实测后收录。
  * 境外台（radioparadise / radiofrance / dancewave / laut.fm）已按产品要求全部下架。
@@ -1149,9 +1149,9 @@ if (catListEl) {
 
 function updateNowPlaying() {
   // 电台台单已下架：启动/复位一律显示点播台的待机文案
-  if (stationNameEl) stationNameEl.textContent = '拾光点播台';
+  if (stationNameEl) stationNameEl.textContent = '时光点播台';
   if (stationDescEl) stationDescEl.textContent = '点一首歌，云端主播放给你听';
-  document.title = '拾光电台 FM89.1';
+  document.title = '时光电台 · 拾起耳朵里的好时光';
   nowTitle = '';
   const nt = $('nowTitle');
   if (nt) nt.textContent = '';
@@ -1160,7 +1160,7 @@ function updateNowPlaying() {
   const sm = $('songMeta');
   if (sm) { sm.hidden = true; sm.innerHTML = ''; }
   if (window.AndroidIcy) {
-    try { window.AndroidIcy.station('拾光电台 FM89.1'); } catch (_) { /* 忽略 */ }
+    try { window.AndroidIcy.station('时光电台'); } catch (_) { /* 忽略 */ }
   }
   updateMediaSession();
 }
@@ -1607,7 +1607,7 @@ function renderNowPlaying(j) {
   document.title = title;
   renderSongMeta();
   if (window.AndroidIcy) {
-    try { window.AndroidIcy.station('拾光电台 FM89.1'); } catch (_) { /* 忽略 */ }
+    try { window.AndroidIcy.station('时光电台'); } catch (_) { /* 忽略 */ }
     /* 锁屏 / 系统播放器上的「歌名」也从这走：流里没有 ICY 元数据，原生读取器
      * 给不了标题，air 消息是唯一数据源 —— 每次换歌必须同步推给前台媒体服务，
      * 否则锁屏卡片永远停在开播时那一首。 */
@@ -1885,15 +1885,15 @@ function updateMediaSession() {
     const now = vod || (airInfo && airInfo.title ? airInfo : null);
     navigator.mediaSession.metadata = new MediaMetadata(now ? {
       title: now.title,
-      artist: now.artist || (now.from ? now.from + ' 点播' : '拾光电台 DJ'),
-      album: '拾光电台 FM89.1' + (now.from
+      artist: now.artist || (now.from ? now.from + ' 点播' : '时光电台 DJ'),
+      album: '时光电台' + (now.from
         ? ' · ' + now.from + '点的' + (now.to ? '，送给' + now.to : '')
         : ' · 直播中'),
       artwork: artwork,
     } : {
       title: nowTitle || s.name,
       artist: nowTitle ? s.name : s.desc,
-      album: nowTitle ? '拾光电台 FM89.1 · ' + s.name : '拾光电台 FM89.1',
+      album: nowTitle ? '时光电台 · ' + s.name : '时光电台',
       artwork: artwork,
     });
     navigator.mediaSession.setActionHandler('play', () => { startStream(); });
@@ -2190,7 +2190,7 @@ if (cat !== 'all' && visibleIdx().indexOf(index) < 0) {
 }
 renderCats();          // 台单已下架：元素不存在时直接返回
 renderStations();      // 同上，保留调用不报错
-updateNowPlaying();    // 品牌待机文案：拾光点播台
+updateNowPlaying();    // 品牌待机文案：时光点播台
 updatePlayUI();
 /* v1.20：打开就接上直播（收音机拧开就有声）。旧版要等首条 air 消息来才
  * 自动加入 —— 现在音频是服务器连续推的流，连上就在播，air 只负责改界面。
@@ -2262,7 +2262,7 @@ function currentVersion() {
       if (v) return v;
     }
   } catch (_) { /* 忽略 */ }
-  return '1.21.4'; // 网页版：与 manifest versionName 同步维护
+  return '1.21.5'; // 网页版：与 manifest versionName 同步维护
 }
 
 let updateUrl = '';
@@ -2397,9 +2397,14 @@ wireUpdate();
     const NS = 'fm891-radio/online';
     const HEARTBEAT = 30000;
     const STALE = 120000;
+    // 排序即优先级：mosquitto 放第一 —— 实测它在被 fake-IP 污染的网络里
+    // 仍能建立 TCP，而 emqx 一旦被本地 DNS 漏掉就是「秒拒连」，等满 9 秒才切线太亏。
+    // **必须与 server.py 的 BROKERS 完全同集**（服务器是 emqx+mosquitto 两条）：
+    // 少一条服务器不在的线路 —— 客户端连上它会显示「已上线」，却永远收不到
+    // 服务器发的队列/进度，比直接连不上还难查。
     const BROKERS = [
-      'wss://broker.emqx.io:8084/mqtt',
       'wss://test.mosquitto.org:8081/mqtt',
+      'wss://broker.emqx.io:8084/mqtt',
     ];
 
     let cid = '';
@@ -2420,6 +2425,7 @@ wireUpdate();
     const srcEl = $('onlineSrc');   // 启动时取一次：晚到的渲染不再碰 document（关窗后它已不可用）
     let client = null;
     let brokerIdx = 0;
+    let lastSwitchAt = 0;   // 换线冷却：两条线路同时秒拒时，别把 CPU 烧在建连上
     let gotConnect = false;
     let switching = false;
     let attempt = 0;
@@ -2485,6 +2491,10 @@ wireUpdate();
 
     function switchBroker() {
       if (switching) return;
+      // 换线冷却 700ms：错误风暴下（多条线路一起拒）不至于疯狂重建连接
+      const _now = Date.now();
+      if (_now - lastSwitchAt < 700) return;
+      lastSwitchAt = _now;
       switching = true;
       clearFailTimer();
       const prev = client;
@@ -2576,7 +2586,13 @@ wireUpdate();
         attempt++;
         if (attempt >= 6) switchBroker(); // 同一线路反复失败 → 轮换
       });
-      c.on('error', () => { /* 静默，交给重连/切换逻辑 */ });
+      c.on('error', () => {
+        // 秒切：压根没建立起来的连接（DNS 被 fake-IP 污染 = 秒拒/秒超时）
+        // 没必要等满 9 秒黑洞超时才换线 —— 那 9 秒里用户看到的是「点歌台线路不稳」。
+        // 连上过（gotConnect）才交给 reconnect 自己恢复，不抢它的重试。
+        if (client !== c || gotConnect) return;
+        switchBroker();
+      });
     }
 
     // 启动即显示徽章（连接中 …），状态由 render 驱动，永不整体隐藏
