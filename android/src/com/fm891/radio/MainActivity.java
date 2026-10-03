@@ -7,6 +7,9 @@ import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.PowerManager;
+import android.util.Log;
+import android.webkit.ConsoleMessage;
+import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -84,6 +87,18 @@ public class MainActivity extends Activity {
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
 
         webView.setWebViewClient(new WebViewClient());
+        /* JS 控制台接进 logcat（tag=FM891-JS）：页面里的 console.error/exception
+         * 在 release 包里原本一个都看不见 —— 「按钮点了没反应」这种问题只能靠猜。
+         * 一行桥换永久可诊断性（adb logcat -s FM891-JS）。 */
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onConsoleMessage(ConsoleMessage cm) {
+                Log.i("FM891-JS", (cm.messageLevel() == ConsoleMessage.MessageLevel.ERROR
+                        ? "E " : "") + " [" + cm.sourceId() + ":" + cm.lineNumber()
+                        + "] " + cm.message());
+                return true;
+            }
+        });
         webView.setBackgroundColor(0xFF0D0821);
         webView.addJavascriptInterface(new IcyBridge(), "AndroidIcy");
 

@@ -91,6 +91,117 @@
       }
     }
 
+    /* ---------------- 选版弹窗 + 中途撤单（v1.21.11） ----------------
+     * 用户原话：「点歌流程弄成弹窗选择，中途不想点 可以取消」。
+     * 候选版本不再铺在条目里 —— 自己的单有**新**候选到达就自动弹一次
+     * （同一轮只弹一次，手动关过就不再骚扰）；行内只留「选版本」把手
+     * 随时重开；别人点的歌只给把手、不弹到人家屏幕上。
+     * 「取消点歌」= 撤单：del 墓碑 + ver 递增 → 快照推给云端 —— 服务端
+     * handle_queue 记 canceled，找歌/选版/下载/出片各环节的 _canceled
+     * 断点闸当场停手；已备好的连轮播一起下架（drop_id，文件保留）。 */
+    const candMask = $('candMask');
+    const candX = $('candX');
+    const candTitleEl = $('candTitle');
+    const candHint = $('candHint');
+    const candList = $('candList');
+    const candOk = $('candOk');
+    const candLater = $('candLater');
+    const candCancel = $('candCancel');
+    let candFor = '';            // 弹窗正对着的条目 id（'' = 没开）
+    let candShownSig = '';       // 已自动弹过的候选签名（一轮弹一次）
+    let candDismissed = '';      // 被手动关掉的那轮签名（同轮不再自动弹）
+
+    function candSigOf(it) {
+      return it && it.candsSig ? String(it.candsSig) : '';
+    }
+    function isOwnReq(it) {
+      return !!(it && (it.cid === myId || it.mine));
+    }
+    function renderCandModal() {
+      if (!candMask || !candList) return;
+      const it = items.get(candFor);
+      if (!it || !it.cands || !it.cands.length || it.del) { closeCandModal(); return; }
+      if (candTitleEl) {
+        candTitleEl.textContent = '🎵 给《' + String(it.title || '').slice(0, 14) + '》挑版本';
+      }
+      const cur = String(picking[it.id] || it.pick || '');
+      if (candHint) {
+        candHint.textContent = it.pick
+          ? ('已选第 ' + it.pick + ' 版 · 正按这版下')
+          : (cur ? '挑好了 → 点「就下这版」生效' : '挑一个版本（不挑就用推荐那版）');
+      }
+      candList.textContent = '';
+      it.cands.forEach((cd) => {
+        const on = cur === String(cd.n);
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.className = 'req-cand' + (on ? ' on' : '') + (cd.best ? ' best' : '');
+        const dot = document.createElement('i');
+        dot.className = 'req-cand-dot';
+        dot.textContent = on ? '●' : '○';
+        const nm = document.createElement('b');
+        nm.textContent = String(cd.s || cd.t || '').slice(0, 18);
+        row.appendChild(dot);
+        row.appendChild(nm);
+        if (cd.a) {
+          const ar = document.createElement('em');
+          ar.textContent = String(cd.a).slice(0, 12);
+          row.appendChild(ar);
+        }
+        row.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          picking[it.id] = String(cd.n);   // 只是本地选中，点确定才发出去
+          renderCandModal();
+        });
+        candList.appendChild(row);
+      });
+      if (candOk) {
+        candOk.disabled = !cur || String(it.pick || '') === cur;
+        candOk.textContent = cur ? ('就下第 ' + cur + ' 版') : '选一版';
+      }
+      /* 撤单按钮只对自己的单亮：别人的歌你替人家撤了算怎么回事 */
+      if (candCancel) candCancel.hidden = !isOwnReq(it);
+    }
+    function openCandModal(it) {
+      if (!candMask || !it || !it.cands || !it.cands.length || it.del) return false;
+      candFor = String(it.id || '');
+      candMask.hidden = false;
+      renderCandModal();
+      return true;
+    }
+    /* dismiss=true：手动关的（✕/稍后/遮罩/返回键）→ 这一轮不再自动弹 */
+    function closeCandModal(dismiss) {
+      if (dismiss && candFor) {
+        const it = items.get(candFor);
+        if (it) candDismissed = candSigOf(it);
+      }
+      if (candMask) candMask.hidden = true;
+      candFor = '';
+    }
+    /* onProg 挂完**新**一轮候选时自动弹（同轮 by candsSig 去重）。 */
+    function maybeOpenCand(it) {
+      if (!isOwnReq(it)) return;
+      const sig = candSigOf(it);
+      if (!sig || !it.cands || it.del) return;
+      if (sig === candDismissed) return;
+      if (sig === candShownSig && candMask && !candMask.hidden) return;
+      candShownSig = sig;
+      openCandModal(it);
+    }
+    /* 中途撤单：这就是用户说的「可以取消」。 */
+    function cancelRequest(it) {
+      if (!it || it.del) return false;
+      const title = String(it.title || '这首歌');
+      tombstone(it);                      // del 墓碑 + ver 递增
+      prog.delete(it.id);                 // 陈旧进度跟着撤，别再画找歌中
+      delete picking[it.id];
+      if (candFor === String(it.id)) closeCandModal();
+      publish(true);                      // 立刻把撤单快照推出去
+      render();
+      say('已取消《' + title.slice(0, 12) + '》的点歌');
+      return true;
+    }
+
     /* ---------------- 主播气泡（打字机 + 播报队列） ---------------- */
     const djText = $('djText');
     let sayQueue = [];
@@ -347,6 +458,7 @@
             }
             delete picking[ci.id];   // 待确认的行选择同样作废，别在新列表里高亮旧编号
             render();
+            maybeOpenCand(ci);   // v1.21.11：新候选自动弹窗（自己的单，一轮一次）
           }
         }
       }
@@ -395,6 +507,9 @@
       if (it && it.cands) {
         it.cands = null;
         it.candsSig = '';
+        /* 候选窗口结束（选完/超时）→ 弹窗跟着收，别留一个点「确定」没反应
+         * 的空壳（和 2026-10-03 那次「换了没生效」同性质的坑）。 */
+        if (candFor && String(id) === String(candFor)) closeCandModal();
         hit = true;
       }
       return hit;
@@ -538,7 +653,9 @@
     function normNext(arr) {
       if (!Array.isArray(arr)) return [];
       const out = [];
-      for (const it of arr.slice(0, 5)) {
+      /* v1.21.11：服务器会在 next 前面挂最多 2 条「找歌中」（wait=1），
+       * 窗口从 5 放宽到 7 —— 卡 5 的话备好的歌会被找歌中的挤出白名单。 */
+      for (const it of arr.slice(0, 7)) {
         if (!it || typeof it !== 'object') continue;
         const title = typeof it.title === 'string' ? it.title.trim().slice(0, 40) : '';
         if (!title) continue;
@@ -549,6 +666,7 @@
           dur: Math.max(0, Number(it.dur) || 0),
           who: typeof it.who === 'string' ? it.who.slice(0, 16) : '',
           lib: !!it.lib,
+          wait: !!it.wait,   // 还没备好（找歌中）—— 排队栏压暗 + 状态字要认它
         });
       }
       return out;
@@ -876,6 +994,12 @@
       // 关窗 / 文档不可用时直接退出：本模块的原则是「任何情况下都不许抛」，
       // 扫描的 await 链可能在窗口关闭后才 resume 并走到这里。
       if (!reqList || typeof document === 'undefined' || !document) return;
+      /* 选版弹窗对不上号就收：条目被撤 / 候选被 clearProg 撤掉之后还挂着
+       * 弹窗，点「确定」等于空操作 —— 用户原话「点了没反应」。 */
+      if (candFor) {
+        const cm = items.get(candFor);
+        if (!cm || cm.del || !cm.cands) closeCandModal();
+      }
       const list = visible();
       const frag = document.createDocumentFragment();
       list.forEach((it, i) => {
@@ -930,62 +1054,37 @@
           });
           li.appendChild(bar);
         }
-        /* 候选版本：服务器把那一页原样下发，让用户自己挑哪一版。
-         * 「点的歌没有一首是对的版本」—— 机器猜不准哪条是原唱，那就别猜了。
-         * 正在播的不挂：服务端也会拒（air_state.id 相同就不换），列表挂着
+        /* 候选版本（v1.21.11 改弹窗）：行内不再铺列表，只留「选版本」把手 ——
+         * 新候选到达时自动弹一次（见 maybeOpenCand），把手负责随时重开。
+         * 正在播的不挂：服务端也会拒（air_state.id 相同就不换），把手挂着
          * 只会让用户点了没反应。 */
         if (it.cands && it.cands.length > 1 && !it.del && it.st !== 'ready' &&
             it.st !== 'onair' && !(airState && airState.id === it.id)) {
-          const cbox = document.createElement('span');
-          cbox.className = 'req-cands';
-          const cur = String(it.pick || picking[it.id] || '');
-          const chint = document.createElement('small');
-          chint.className = 'req-cands-h';
-          chint.textContent = it.pick
-            ? ('已选第 ' + it.pick + ' 版 · 正按这版下')
-            : (cur ? '挑好了 → 点「确定」生效' : '下面几版挑一个（不挑就用推荐那版）');
-          cbox.appendChild(chint);
-          const list = document.createElement('span');
-          list.className = 'req-cands-list';
-          it.cands.forEach((cd) => {
-            const on = cur === String(cd.n);
-            const row = document.createElement('button');
-            row.type = 'button';
-            row.className = 'req-cand' + (on ? ' on' : '') + (cd.best ? ' best' : '');
-            const dot = document.createElement('i');
-            dot.className = 'req-cand-dot';
-            dot.textContent = on ? '●' : '○';
-            const nm = document.createElement('b');
-            nm.textContent = String(cd.s || cd.t || '').slice(0, 18);
-            row.appendChild(dot);
-            row.appendChild(nm);
-            /* 歌手单独一列。bot 原文是「神话 张惠妹」挤在一格里，界面上分不清
-             * 谁是谁 —— 这一列就是给「我要原唱」的眼睛用的。 */
-            if (cd.a) {
-              const ar = document.createElement('em');
-              ar.textContent = String(cd.a).slice(0, 12);
-              row.appendChild(ar);
-            }
-            row.addEventListener('click', (ev) => {
-              ev.stopPropagation();
-              picking[it.id] = String(cd.n);
-              render();
-            });
-            list.appendChild(row);
+          const chip = document.createElement('button');
+          chip.type = 'button';
+          chip.className = 'req-candchip' + (it.pick ? ' picked' : '');
+          chip.textContent = it.pick
+            ? ('已选第 ' + it.pick + ' 版')
+            : ('选版本 · ' + it.cands.length + ' 版');
+          chip.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            openCandModal(it);
           });
-          cbox.appendChild(list);
-          if (!it.pick && cur) {
-            const ok = document.createElement('button');
-            ok.type = 'button';
-            ok.className = 'req-cand-ok';
-            ok.textContent = '确定，就下第 ' + cur + ' 版';
-            ok.addEventListener('click', (ev) => {
-              ev.stopPropagation();
-              pickVersion(it, cur);
-            });
-            cbox.appendChild(ok);
-          }
-          li.appendChild(cbox);
+          li.appendChild(chip);
+        }
+        /* 中途撤单 ✕（自己的单、还没开播才有）—— 用户原话「中途不想点
+         * 可以取消」。别人的单不给撤；正在播的撤了也追不回，藏掉。 */
+        if (!it.del && isOwnReq(it) && !(airState && airState.id === it.id)) {
+          const xb = document.createElement('button');
+          xb.type = 'button';
+          xb.className = 'req-x';
+          xb.textContent = '✕';
+          xb.setAttribute('aria-label', '取消点歌');
+          xb.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            cancelRequest(it);
+          });
+          li.appendChild(xb);
         }
         frag.appendChild(li);
       });
@@ -1119,6 +1218,8 @@
      * 调这两个函数，true 表示「我处理了，你别退」。 */
     function hasOpenDialog() {
       try {
+        // 选版弹窗先判：backPressed 要按「先关最里层」的顺序收
+        if (candMask && !candMask.hidden) return true;
         if (reqMask && !reqMask.hidden) return true;
         // id 是 updateMask 不是 updMask —— 写错的话这里永远取到 null，
         // 更新弹窗开着时按返回键会直接退出 App（判空兜住了崩溃，兜不住逻辑）
@@ -1128,6 +1229,10 @@
       return false;
     }
     function backPressed() {
+      // 选版弹窗开着 → 返回先关它（同轮手动关过，之后就只给把手不自动弹）
+      try {
+        if (candMask && !candMask.hidden) { closeCandModal(true); return true; }
+      } catch (_) { /* 忽略 */ }
       // 有联想下拉先收下拉，再收弹窗：跟系统返回的逐层收一致
       try {
         const ac = document.getElementById('reqAc');
@@ -1139,6 +1244,24 @@
     }
     window.__fm891BackPressed = backPressed;
     window.__fm891HasOpenDialog = hasOpenDialog;
+
+    /* 选版弹窗的按钮：确定=发 pick；稍后/✕/遮罩=关（同轮不再自动弹）；
+     * 取消点歌=撤单。 */
+    if (candX) candX.addEventListener('click', () => closeCandModal(true));
+    if (candLater) candLater.addEventListener('click', () => closeCandModal(true));
+    if (candOk) candOk.addEventListener('click', () => {
+      const it = items.get(candFor);
+      const cur = it ? String(picking[it.id] || '') : '';
+      if (it && cur) { pickVersion(it, cur); closeCandModal(); }
+    });
+    if (candCancel) candCancel.addEventListener('click', () => {
+      const it = items.get(candFor);
+      if (it && isOwnReq(it)) cancelRequest(it);
+      else closeCandModal(true);
+    });
+    if (candMask) candMask.addEventListener('click', (ev) => {
+      if (ev.target === candMask) closeCandModal(true);   // 点遮罩 = 稍后再说
+    });
 
     if (djBubble) djBubble.addEventListener('click', open);
     if (reqClose) reqClose.addEventListener('click', close);
@@ -1428,6 +1551,9 @@
       air: () => airState, onAirMsg: onAirMsg,
       /* 一次性提醒（v1.21.9）：miss 提醒 / 撤单清扫要能被测试直接驱动 */
       sweepDone: sweepDone, noteMiss: noteMiss, tombstone: tombstone,
+      /* v1.21.11 选版弹窗 + 中途撤单：要能被测试直接驱动 */
+      cancelRequest: cancelRequest, openCandModal: openCandModal,
+      closeCandModal: closeCandModal, maybeOpenCand: maybeOpenCand,
       /* 播报闸门要看队列长度才能验（第一条会被立刻取走开始打字，长度变 0） */
       sayQueueLen: () => sayQueue.length,
       /* 曲库链路：联想/AI 祝福/速点的数据与行为 */

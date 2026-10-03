@@ -172,6 +172,25 @@
     </div>
   </div>
 
+  <!-- 选版弹窗（v1.21.11「点歌流程弄成弹窗选择」）：候选版本不再铺在点歌台
+       条目里，改弹窗挑。新候选一轮自动弹一次；行内的「选版本」把手随时重开；
+       「取消点歌」= 中途撤单（del 墓碑 → 云端中止找歌/换版、必要时下架）。 -->
+  <div class="dialog-mask" id="candMask" hidden>
+    <div class="dialog cand-dialog" role="dialog" aria-modal="true" aria-labelledby="candTitle">
+      <div class="dialog-head">
+        <h3 id="candTitle">🎵 挑个版本</h3>
+        <button class="dialog-x" id="candX" type="button" aria-label="关闭选版">✕</button>
+      </div>
+      <p class="req-cands-h" id="candHint">挑一个版本（不挑就用推荐那版）</p>
+      <span class="req-cands-list" id="candList"></span>
+      <div class="dialog-actions">
+        <button class="req-cand-ok" id="candOk" type="button">确定</button>
+        <button class="cand-later" id="candLater" type="button">稍后再说</button>
+        <button class="cand-cancel" id="candCancel" type="button">取消点歌</button>
+      </div>
+    </div>
+  </div>
+
   <audio id="audio" preload="none"></audio>
   <script src="mqtt.min.js"></script>
   <script src="app.js"></script>

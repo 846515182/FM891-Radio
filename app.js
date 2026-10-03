@@ -1628,23 +1628,27 @@ function renderUpNext(list) {
   const strip = $('queueRailList');
   const empty = $('queueRailEmpty');
   if (!box || !strip) return;
-  const arr = Array.isArray(list) ? list.filter((x) => x && x.title).slice(0, 5) : [];
+  const arr = Array.isArray(list) ? list.filter((x) => x && x.title).slice(0, 7) : [];
   /* 正在播的那一首不该再出现在「排队」里 —— 截图里《秋天不回来》正在播，
      队列 #1 也是它，同一首歌占两格，看着就是 bug。左栏只放 4 条：
-     放不下就该省略，也不要溢出到正文下面被盖住。 */
+     放不下就该省略，也不要溢出到正文下面被盖住。
+     v1.21.11：服务器 now 在 next 前面挂「找歌中」的点歌（wait=1，最多 2 条，
+     备好即插到最前）—— 上面的窗口从 5 放宽到 7，别把后面已备好的歌挤没了。 */
   const cur = (airInfo && airInfo.id) || '';
   const queue = arr.filter((x) => !cur || String(x.id || '') !== String(cur)).slice(0, 4);
   if (!queue.length || vod) {
     box.hidden = true;
     return;
   }
-  const sig = queue.map((x) => String(x.id || x.title)).join('|');
+  /* sig 必须带上 wait：同一条从「找歌中」变「已备好」时 id 不变，不带 wait
+     就会被当成同一份歌单跳过重画，状态字永远停在旧的（回归盯这条）。 */
+  const sig = queue.map((x) => String(x.id || x.title) + (x.wait ? '~w' : '')).join('|');
   if (strip.getAttribute('data-sig') === sig) return;   // 同一份别重画
   strip.setAttribute('data-sig', sig);
   strip.textContent = '';
   queue.forEach((it, i) => {
     const li = document.createElement('li');
-    li.className = 'q-item' + (it.lib ? ' lib' : '');
+    li.className = 'q-item' + (it.lib ? ' lib' : '') + (it.wait ? ' wait' : '');
     /* 把序号写进 --i：CSS 里 qIn 动画用它做级联延迟（每条晚 55ms 依次浮现）。
      * 之前 CSS 写了 var(--i) 但从没赋值 → 延迟恒为 0，排队条目是一起出现的，
      * 「丝滑」就少了一半。jsdom 不跑动画，所以要靠断言盯住这个接线。 */
@@ -1665,7 +1669,11 @@ function renderUpNext(list) {
     }
     const s = document.createElement('small');
     s.className = 'q-state';
-    s.textContent = it.lib ? '电台垫场'
+    /* 「找歌中」优先于点歌人：条目还没备好，最要紧的信息是「还在找」，
+     * 谁点的排第二（太长也放不下）。 */
+    s.textContent = it.wait
+      ? (it.who ? String(it.who).slice(0, 4) + ' 找歌中' : '正在找歌')
+      : it.lib ? '电台垫场'
       : (it.who ? String(it.who).slice(0, 6) + ' 点的' : '正在准备');
     main.appendChild(s);
     li.appendChild(no);
@@ -2292,7 +2300,7 @@ function currentVersion() {
       if (v) return v;
     }
   } catch (_) { /* 忽略 */ }
-  return '1.21.10'; // 网页版：与 manifest versionName 同步维护
+  return '1.21.11'; // 网页版：与 manifest versionName 同步维护
 }
 
 let updateUrl = '';
