@@ -338,6 +338,14 @@
           if (String(ci.candsSig || '') !== sig) {
             ci.cands = rec.cands;
             ci.candsSig = sig;
+            /* 换了一轮**新**候选 → 上一轮的 pick 作废：bot 轮失败会落
+             * YouTube 轮，两轮编号会撞车，拿着旧选择直接开新一轮是错的。
+             * ver 必须涨，否则服务端手里那份旧 pick 会盖回来。 */
+            if (ci.pick) {
+              ci.pick = '';
+              ci.ver = (ci.ver || 0) + 1;
+            }
+            delete picking[ci.id];   // 待确认的行选择同样作废，别在新列表里高亮旧编号
             render();
           }
         }
@@ -373,11 +381,23 @@
     }
 
     /* worker 出结果了（发布 ready / 放弃 / 转码失败 / 异常）—— 撤掉进度。
-     * 返回是否真的删了东西，让调用方决定要不要重渲染。 */
+     * 返回是否真的删了东西，让调用方决定要不要重渲染。
+     * 顺手把候选列表也撤掉：服务端候选窗口结束（选完/超时）发的就是这个
+     * 空载荷。不撤的话「选一个版本」会永远挂在已经备好的条目上 —— 用户点了
+     * 没反应（2026-10-03 实锤的换版失败 UI 就卡成这样）。 */
     function clearProg(id) {
-      if (!id || !prog.has(id)) return false;
-      prog.delete(id);
-      return true;
+      let hit = false;
+      if (id && prog.has(id)) {
+        prog.delete(id);
+        hit = true;
+      }
+      const it = id ? items.get(id) : null;
+      if (it && it.cands) {
+        it.cands = null;
+        it.candsSig = '';
+        hit = true;
+      }
+      return hit;
     }
 
     /* v1.20.8：点歌的**每个环节**都要看得见（用户：「点歌每个环节显示进度」）。
@@ -438,6 +458,7 @@
       const ts = Number(msg.ts) || Date.now();
       const cur = ready.get(id);
       if (cur && cur.ver >= ver) return false;   // 同 id 取 ver 大者，断回环
+      const firstTime = !cur;   // 该 id **第一次**备好；换版重发/隧道全量重发 ver+1 不算
       const entry = {
         id: id, url: url, dur: dur, ts: ts, ver: ver,
         title: title,
@@ -449,15 +470,13 @@
       pruneReady();
       const it = findItem(id, title);
       if (it) {
-        announceReady(it, entry);
-        /* 歌都入库了，候选列表必须收起来：st 从没人写成 'ready'，渲染那道
-         * `st !== 'ready'` 的闸形同虚设，「下面几版挑一个」在备好的条目上
-         * 永远挂着 —— 歌都备好了还挑什么（用户看到的「乱」之一）。 */
-        if (it.cands) {
-          it.cands = null;
-          it.candsSig = '';
-          render();
-        }
+        /* 只有**第一次**备好才播报道喜：换版出片、隧道换域名全量重发都是
+         * ver+1，每次都喊一嗓子 =「备好了」一天被重复说几遍（用户原话
+         * 「播报有时候还会重复播报」的根）。 */
+        if (firstTime) announceReady(it, entry);
+        /* v1.21.10：这里**不再**抢撤候选列表 —— 云端的「选版本」窗口还开着
+         * （等选/超时由服务端 end_cands 显式关闭），备好后 45 秒内照样能挑、
+         * 挑了照样换版。抢撤的话挑到一半列表消失，选版流程直接断掉。 */
       }
       return true;
     }
@@ -911,9 +930,12 @@
           });
           li.appendChild(bar);
         }
-        /* 候选版本：服务器把 bot 那一页原样下发，让用户自己挑哪一版。
-         * 「点的歌没有一首是对的版本」—— 机器猜不准哪条是原唱，那就别猜了。 */
-        if (it.cands && it.cands.length > 1 && !it.del && it.st !== 'ready') {
+        /* 候选版本：服务器把那一页原样下发，让用户自己挑哪一版。
+         * 「点的歌没有一首是对的版本」—— 机器猜不准哪条是原唱，那就别猜了。
+         * 正在播的不挂：服务端也会拒（air_state.id 相同就不换），列表挂着
+         * 只会让用户点了没反应。 */
+        if (it.cands && it.cands.length > 1 && !it.del && it.st !== 'ready' &&
+            it.st !== 'onair' && !(airState && airState.id === it.id)) {
           const cbox = document.createElement('span');
           cbox.className = 'req-cands';
           const cur = String(it.pick || picking[it.id] || '');

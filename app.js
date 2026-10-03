@@ -1397,6 +1397,8 @@ function pause() {
   retryTimer = null;           // 用户按了暂停，排队中的重连不再有意义
   abortReissue = 0;
   disarmStallWatchdog();
+  clearTimeout(pauseRecover);  // 用户意图优先：掐掉锁屏自救定时器
+  pauseRecover = null;
   audio.pause();
   updatePlayUI();              // 不等事件，UI 立刻回位（窗口内事件会被忽略）
   setStatus('', '已暂停');
@@ -1973,8 +1975,15 @@ function icyYield(yieldNow) {
   } catch (_) { /* 忽略 */ }
 }
 
+/* 「锁屏被系统掐停」的自救定时器（v1.21.10）：熄屏时 WebView 偶尔会把
+ * audio 直接按停 —— pause 事件不是用户动作，光刷成「缓冲中…」没人再拉它，
+ * 锁屏就再也没声。1.5 秒还没自己起来就走重连通道接回。 */
+let pauseRecover = null;
+
 audio.addEventListener('playing', () => {
   retries = 0;
+  clearTimeout(pauseRecover);
+  pauseRecover = null;
   /* 这条线出声了 → 记住它，并把失败计数归零：下一次重连**先试刚成功的这条**，
    * 不要从计数残值里挑一条（直连好好的却被丢去有 8s 停顿的隧道，就是这么来的）。 */
   if (!isVod()) {
@@ -1995,8 +2004,29 @@ audio.addEventListener('pause', () => {
   if (consumeTeardownPause()) return;
   disarmStallWatchdog();
   updatePlayUI();
-  if (shouldPlay) setStatus('loading', '缓冲中…');
-  else setStatus('', '已暂停');
+  if (shouldPlay) {
+    setStatus('loading', '缓冲中…');
+    clearTimeout(pauseRecover);
+    pauseRecover = setTimeout(() => {
+      pauseRecover = null;
+      if (shouldPlay && audio.paused && !inSwitch()) {
+        setStatus('loading', '接回直播…');
+        handleStreamError();
+      }
+    }, 1500);
+  } else {
+    setStatus('', '已暂停');
+  }
+});
+
+/* 回前台发现「该在播却没在播」（熄屏期间被系统停掉、重连定时器被节流）：
+ * 立刻走重连通道接上，别等用户自己发现没声 —— 「锁屏还会停」的另一半。 */
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  if (shouldPlay && audio.paused && !retryTimer && !inSwitch()) {
+    setStatus('loading', '接回直播…');
+    handleStreamError();
+  }
 });
 
 audio.addEventListener('waiting', () => {
@@ -2262,7 +2292,7 @@ function currentVersion() {
       if (v) return v;
     }
   } catch (_) { /* 忽略 */ }
-  return '1.21.9'; // 网页版：与 manifest versionName 同步维护
+  return '1.21.10'; // 网页版：与 manifest versionName 同步维护
 }
 
 let updateUrl = '';

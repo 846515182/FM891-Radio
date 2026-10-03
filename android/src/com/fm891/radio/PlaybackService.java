@@ -145,11 +145,10 @@ public class PlaybackService extends Service {
                             song.length() > 0 ? station : "网络直播")
                     .putString(MediaMetadata.METADATA_KEY_ALBUM, BRAND);
             try {
-                int iconId = appIcon();
-                if (iconId != 0) {
-                    android.graphics.Bitmap bmp =
-                            BitmapFactory.decodeResource(getResources(), iconId);
-                    if (bmp != null) mb.putBitmap(MediaMetadata.METADATA_KEY_ART, bmp);
+                android.graphics.Bitmap art = avatar();
+                if (art != null) {
+                    mb.putBitmap(MediaMetadata.METADATA_KEY_ART, art);
+                    mb.putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, art);
                 }
             } catch (Throwable ignored) { }
             session.setMetadata(mb.build());
@@ -169,6 +168,41 @@ public class PlaybackService extends Service {
             return getResources().getIdentifier("ic_launcher", "mipmap", getPackageName());
         } catch (Throwable t) {
             return 0;
+        }
+    }
+
+    /* ---------------- 主播头像（系统播放器用） ----------------
+     * 系统播放器（通知栏 / 锁屏 / 蓝牙 / 车机）显示的封面来自 MediaSession 的
+     * METADATA_KEY_ART。以前这里塞的是 ic_launcher —— 方的、旧版应用图标，
+     * 用户：「系统播放器头像还是以前的 不是圆的」。
+     * 改成 APK 里 assets/icons/dj-avatar.png（和站内用的同一张新头像），
+     * 居中裁成正方形再上圆形遮罩，只解码一次缓存。 */
+    private static android.graphics.Bitmap artCache;
+
+    private synchronized android.graphics.Bitmap avatar() {
+        if (artCache != null) return artCache;
+        try (java.io.InputStream in = getAssets().open("icons/dj-avatar.png")) {
+            android.graphics.Bitmap src = BitmapFactory.decodeStream(in);
+            if (src == null) return null;
+            int w = src.getWidth(), h = src.getHeight();
+            int s = Math.min(w, h);
+            android.graphics.Bitmap out = android.graphics.Bitmap.createBitmap(
+                    s, s, android.graphics.Bitmap.Config.ARGB_8888);
+            android.graphics.Canvas c = new android.graphics.Canvas(out);
+            android.graphics.Paint p = new android.graphics.Paint(
+                    android.graphics.Paint.ANTI_ALIAS_FLAG);
+            android.graphics.BitmapShader sh = new android.graphics.BitmapShader(
+                    src, android.graphics.Shader.TileMode.CLAMP,
+                    android.graphics.Shader.TileMode.CLAMP);
+            android.graphics.Matrix mx = new android.graphics.Matrix();
+            mx.postTranslate(-(w - s) / 2f, -(h - s) / 2f);   // 居中裁掉多余边
+            sh.setLocalMatrix(mx);
+            p.setShader(sh);
+            c.drawCircle(s / 2f, s / 2f, s / 2f, p);          // 圆形遮罩
+            artCache = out;
+            return out;
+        } catch (Throwable t) {
+            return null;   // 没有就退回不设封面（系统自行兜底），绝不炸服务
         }
     }
 
