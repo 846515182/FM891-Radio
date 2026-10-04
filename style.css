@@ -2885,11 +2885,22 @@ body.track-change #cover {
 
 /* —— 输入 + 点歌 同一行 —— */
 .req-compose-row { display: flex; align-items: stretch; }
-.req-compose-row .ac-wrap { flex: 1; min-width: 0; }
-.req-go {
+/* 输入侧：min-width 是兜底 —— 无头浏览器实测（390x844）按钮曾把输入框压到 28px，
+   用户反馈「搜索框去哪里了」。这里钉死下限，谁也别想再吃掉它。 */
+.req-compose-row .ac-wrap { flex: 1 1 auto; min-width: 140px; }
+/* 横向溢出保险：无头浏览器实测文档 scrollWidth 492 > 视口 392，抽屉内容把页面撑宽、
+   「点歌」按钮被切在屏外。抽屉本体自己收口，内容再宽也只在抽屉内部横滑。 */
+.req-dialog { overflow-x: hidden; }
+.req-compose-row,
+.req-dialog .req-head,
+.req-dialog .req-list { max-width: 100%; box-sizing: border-box; }
+.req-compose-row .ac-wrap > input { width: 100%; min-width: 0; }
+/* 按钮侧必须用 `.req-form .req-go`（0,2,0）才压得住 `.req-form button{width:100%}` */
+.req-form .req-go {
   flex: none;
-  width: 86px;
+  width: 104px;
   margin-left: 8px;
+  padding: 11px 8px;
   border-radius: 12px;
   font-size: 15px;
   font-weight: 800;
