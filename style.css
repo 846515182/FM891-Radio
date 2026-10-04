@@ -2832,3 +2832,113 @@ body.track-change #cover {
   max-height: calc(3 * 1.7em + 11px);
   overflow: hidden;
 }
+
+/* ============ v1.21.12 点歌台重排（用户：「点歌那个页面很烂」） ============
+   改的是**顺序与密度**，不加功能：
+     · 头部一行交代身份与协同（几个人一起点歌 + 昵称入口 + ✕）
+     · 「输入 + 点歌」并排：主按钮不再独占一整行
+     · 「更多」里只剩主播性格（送给谁/祝福语已整块删除）
+     · 队列分「我的点歌 / 大家的点歌」两组
+     · 每行压到两行：歌名 + 「谁 · 状态 · 选版把手」，进度改成行底 2px 覆盖条
+   这台 WebView 低于 Chrome 84：flex gap / inset() / aspect-ratio / dvh 全部无效，
+   所以下面一律用 margin + 百分比圆角，不碰那些属性。 */
+
+/* —— 头部 —— */
+.req-head { align-items: center; }
+.req-head-l {
+  display: flex;
+  align-items: baseline;
+  flex: 1;
+  min-width: 0;
+}
+.req-head-l h3 { margin: 0; flex: none; }
+.req-live {
+  margin-left: 8px;
+  font-size: 11.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.req-head-r { display: flex; align-items: center; flex: none; }
+.nick-btn {
+  min-height: 40px;
+  margin-right: 8px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.nick-btn.on {
+  border-color: rgba(236, 72, 153, 0.55);
+  background: rgba(236, 72, 153, 0.2);
+}
+
+/* —— 昵称编辑框（默认 hidden，点头部才展开）—— */
+.req-nick { margin: 0 0 8px; }
+.req-nick label { font-size: 11.5px; color: var(--muted); }
+.req-nick input { width: 100%; }
+
+/* —— 输入 + 点歌 同一行 —— */
+.req-compose-row { display: flex; align-items: stretch; }
+.req-compose-row .ac-wrap { flex: 1; min-width: 0; }
+.req-go {
+  flex: none;
+  width: 86px;
+  margin-left: 8px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+/* —— 分组标题 —— */
+.req-group {
+  list-style: none;
+  margin: 12px 2px 6px;
+  padding: 0;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+}
+.req-list > .req-group:first-child { margin-top: 4px; }
+
+/* —— 紧凑行 —— */
+.req-item { position: relative; overflow: hidden; }
+.req-line2 {
+  display: flex;
+  align-items: center;
+  margin-top: 2px;
+}
+.req-line2 .req-meta {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.req-waitpick {
+  flex: none;
+  margin-left: 8px;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+/* 进度：行底 2px 覆盖条，不额外占高度 */
+.req-pbar {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.08);
+  pointer-events: none;
+}
+.req-pbar > i {
+  display: block;
+  height: 2px;
+  background: linear-gradient(90deg, #8b5cf6, #ec4899);
+}

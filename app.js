@@ -15,7 +15,7 @@
  */
 const STATIONS = [
   { id: 'hits', name: '华语流行热歌', desc: '华语热门金曲 · 24 小时连播', cat: 'music', url: 'https://lhttp.qtfm.cn/live/1110/64k.mp3' }, // 重点推荐 · 默认频道
-  { id: 'huayu', name: 'FM891 线上音乐台', desc: '华语流行 · 网络电台', cat: 'music', url: 'https://lhttp.qtfm.cn/live/20500215/64k.mp3' },
+  { id: 'huayu', name: '华语音乐台（备用线路）', desc: '华语流行 · 云端断线时的备用线路', cat: 'music', url: 'https://lhttp.qtfm.cn/live/20500215/64k.mp3' },
   { id: 'classic-pop', name: '经典流行', desc: '华语经典流行 · 老歌情怀', cat: 'music', url: 'https://lhttp.qtfm.cn/live/4938/64k.mp3' },
   { id: 'bj-music', name: '音乐前线', desc: '华语乐坛新歌与经典并行', cat: 'music', url: 'https://lhttp.qtfm.cn/live/332/64k.mp3' },
   { id: 'years', name: '年代金曲', desc: '上世纪华语年代金曲重温', cat: 'music', url: 'https://lhttp-hw.qtfm.cn/live/1223/64k.mp3' },
@@ -2300,7 +2300,7 @@ function currentVersion() {
       if (v) return v;
     }
   } catch (_) { /* 忽略 */ }
-  return '1.21.11'; // 网页版：与 manifest versionName 同步维护
+  return '1.21.12'; // 网页版：与 manifest versionName 同步维护
 }
 
 let updateUrl = '';
@@ -2469,6 +2469,18 @@ wireUpdate();
     let attempt = 0;
     let failTimer = null;
     let state = 'connecting'; // connecting | online | failed
+
+    /* v1.21.12：点歌台头部要显示「N 人一起点歌」—— 协同这件事得让人看得见，
+     * 否则一个人孤零零地对着输入框，不知道还有没有别人在点。数据源就是本模块
+     * 的 presence 感知（连着同一个点歌台的客户端，含本机）；没连上返回 0，
+     * 由调用方显示「正在数人…」，绝不显示 0 人。 */
+    window.__fmPresence = () => {
+      if (state !== 'online') return 0;
+      const now = Date.now();
+      let n = 1;                       // 本机也在里面
+      Object.keys(peers).forEach((k) => { if (now - peers[k] <= STALE) n++; });
+      return n;
+    };
 
     function render() {
       if (!pill || !countEl) return;
@@ -2673,7 +2685,7 @@ window.__radio = {
   /* 「是否正在跟播」的对外读数：v1.20 没有跟播开关了，
    * 只要直播流连着就算在听。 */
   following: () => shouldPlay,
-  /* 云端音源地址的 origin：点歌台用它拉 /catalog.json（曲库联想 + AI 祝福词） */
+  /* 云端音源地址的 origin：点歌台用它拉 /catalog.json（曲库联想 + 常听速点） */
   origin: () => {
     try {
       const u = (vod && vod.url) || (airInfo && airInfo.url) || '';

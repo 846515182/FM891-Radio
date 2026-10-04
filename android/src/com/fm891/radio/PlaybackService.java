@@ -23,15 +23,18 @@ import android.os.IBinder;
  * - Hosts a system MediaSession + MediaStyle notification showing station and
  *   current song on the lock screen, with play/pause controls.
  *
- * Brand: 拾光电台 FM89.1 ("pick up the good times in your ears").
+ * Brand: 时光电台 ("pick up the good times in your ears"). The station string is
+ * pushed from the web app (AndroidIcy.station) but the default must stay on brand:
+ * it is what the system player shows before the page connects, and the user was
+ * told the player said "FM891" (v1.21.12).
  */
 public class PlaybackService extends Service {
 
     private static final String CHANNEL_ID = "radio_playback";
     private static final int NOTIF_ID = 891;
-    private static final String BRAND = "拾光电台 FM89.1";
+    private static final String BRAND = "时光电台";
 
-    private static volatile String station = "拾光电台 FM89.1";
+    private static volatile String station = "时光电台";
     private static volatile String song = "";
     private static volatile boolean playingFlag = true;
     private static volatile PlaybackService instance;
@@ -231,6 +234,15 @@ public class PlaybackService extends Service {
                 .setShowWhen(false)
                 .setVisibility(Notification.VISIBILITY_PUBLIC)
                 .setPriority(Notification.PRIORITY_LOW);
+
+        /* 通知栏大图标以前**没设** —— 系统回落到应用图标，而那个应用图标是
+         * 「圆里套一个白方块」，用户看到的就是「圆形图标里面还有一个很小的
+         * 方形图」（v1.21.12）。这里和 MediaSession 用同一张圆形主播头像，
+         * 通知栏/锁屏/系统播放器三处就都是同一张脸、同一颗圆。 */
+        try {
+            android.graphics.Bitmap art = avatar();
+            if (art != null) b.setLargeIcon(art);
+        } catch (Throwable ignored) { }
 
         if (session != null) {
             try {

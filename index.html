@@ -124,48 +124,57 @@
       <!-- 标题行：右边常驻一个 ✕。以前退出只能靠底部那个「收起」，而弹窗没有
            max-height 也不滚动，点几首歌后队列把弹窗撑出屏幕，那个按钮被顶到
            屏幕外 —— 用户反馈「点完后返回按钮都没有」，等于被困在点歌台里。 -->
-      <div class="dialog-head">
-        <h3 id="reqTitle">🎧 在线点歌</h3>
-        <button class="dialog-x" id="reqX" type="button" aria-label="收起点歌台">✕</button>
+      <!-- v1.21.12 头部重排（用户：「点歌那个页面很烂」）。旧版不是缺功能，是**顺序
+           反了**：上半屏全是输入区（输入框 + 常听 + 主播性格 + 一整行「点歌」大按钮
+           + 折叠区），真正想看的「大家排到哪了、我第几位」被压在屏幕下面，点完歌还得
+           滑下去找。现在头一行交代身份与协同（几个人一起点歌 + 昵称入口），第二行就是
+           「输入 + 点歌」（主按钮与输入同排，省掉一整行），其余收进「更多」。 -->
+      <div class="dialog-head req-head">
+        <div class="req-head-l">
+          <h3 id="reqTitle">🎧 点歌台</h3>
+          <span class="req-live" id="reqLive">正在数人…</span>
+        </div>
+        <div class="req-head-r">
+          <button class="nick-btn" id="nickBtn" type="button">昵称</button>
+          <button class="dialog-x" id="reqX" type="button" aria-label="收起点歌台">✕</button>
+        </div>
       </div>
-      <form class="req-form" id="reqForm" autocomplete="off">
-        <!-- 输入联动联想：打「你的」下拉弹《你的选择》，曲库速点一键填 -->
-        <div class="ac-wrap">
-          <input id="reqInput" type="text" placeholder="输入歌名，主播全网找（边打边联想）" maxlength="30" />
-          <ul class="ac-list" id="reqAc" hidden></ul>
+      <!-- 昵称编辑：默认收起（点头部「昵称」才展开）。以前它躺在队列底下，改一次昵称
+           要滑过整张列表。 -->
+      <div class="req-nick" id="reqNickBox" hidden>
+        <label for="nickInput">我的昵称</label>
+        <input id="nickInput" type="text" maxlength="16" placeholder="别人点歌时看到的名字" />
+      </div>
+            <form class="req-form req-compose" id="reqForm" autocomplete="off">
+        <!-- 输入 + 点歌同一行：这是整个面板唯一的主按钮（省掉一整行的高度） -->
+        <div class="req-compose-row">
+          <div class="ac-wrap">
+            <input id="reqInput" type="text" placeholder="想听哪首歌？主播全网找" maxlength="30" />
+            <ul class="ac-list" id="reqAc" hidden></ul>
+          </div>
+          <button class="primary req-go" id="reqGo" type="submit">点歌</button>
         </div>
+        <!-- 曲库常听：横向一排 -->
         <div class="req-chips" id="reqChips" hidden></div>
-        <!-- 主播性格：**你自己选**。时段自动只是兜底（用户原话：用户自己选 DJ 的
-             性格，比我们替他决定好得多）。选中值跟着这单一起发给云端。 -->
-        <div class="mood-row" id="moodRow" role="radiogroup" aria-label="主播性格">
-          <span class="mood-lb">主播</span>
-          <button class="mood auto" type="button" data-mood="">自动</button>
-          <button class="mood" type="button" data-mood="announce">报幕</button>
-          <button class="mood" type="button" data-mood="chat">闲聊</button>
-          <button class="mood" type="button" data-mood="night">深夜</button>
-        </div>
-        <button class="primary" id="reqGo" type="submit">点歌</button>
-        <!-- 「送给谁 / 祝福语」折起来：默认没人要填，每次都摆着两个输入框
-             是这个面板显得又高又烦的主因（用户反馈「不要那个框」）。 -->
+        <!-- v1.21.12：这里原来还有「送给谁 + 祝福语 + AI 写祝福」。用户原话
+             「加一句想说的有啥用，没用就删掉相关的代码」—— 整块移除：控件、AI 祝福
+             拉取、云端祝福词本，以及播报文案里的「送给…：…」都一并去掉。 -->
         <details class="req-more">
-          <summary>🎀 加一句想说的（选填）</summary>
-          <input id="reqTo" type="text" placeholder="送给谁（选填）" maxlength="16" />
-          <div class="msg-row">
-            <textarea id="reqMsg" rows="2" maxlength="60"
-                      placeholder="祝福语 / 内心独白（AI 会朗读播报）"></textarea>
-            <button class="ghost bless-btn" id="reqBless" type="button">✨ AI 写祝福</button>
+          <summary>更多 · 主播性格</summary>
+          <!-- 主播性格：**你自己选**。时段自动只是兜底（用户原话：用户自己选 DJ 的
+               性格，比我们替他决定好得多）。选中值跟着这单一起发给云端。 -->
+          <div class="mood-row" id="moodRow" role="radiogroup" aria-label="主播性格">
+            <span class="mood-lb">主播</span>
+            <button class="mood auto" type="button" data-mood="">自动</button>
+            <button class="mood" type="button" data-mood="announce">报幕</button>
+            <button class="mood" type="button" data-mood="chat">闲聊</button>
+            <button class="mood" type="button" data-mood="night">深夜</button>
           </div>
         </details>
       </form>
       <p class="req-sum" id="reqSum" hidden></p>
       <p class="req-hint" id="reqHint"></p>
       <ul class="req-list" id="reqList"></ul>
-      <!-- v1.21.9：点播墙（创意⑤）撤下 —— 播过的歌改由一次性提醒告知，
-           队列里只留「还没出结果」的条目，常驻历史没人看还挡着再点同一首。 -->
-      <div class="req-nick">
-        <label for="nickInput">我的昵称</label>
-        <input id="nickInput" type="text" maxlength="16" placeholder="别人点歌时看到的名字" />
-      </div>
       <div class="dialog-actions">
         <button class="ghost" id="reqClose" type="button">收起</button>
       </div>

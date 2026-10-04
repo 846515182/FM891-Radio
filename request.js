@@ -5,7 +5,8 @@
  *     fm891-radio/q/<cid>，同时订阅 fm891-radio/q/#，收到别人的快照后按
  *     条目 id 做并集合并。没有中心服务，但所有在线客户端会收敛到同一份
  *     队列；条目一旦被任何在线客户端复制进快照，提出者下线也不会丢歌。
- *     条目新增 to（送给谁）/ msg（祝福语）两个字段，云端会朗读播报。
+ *     v1.21.12：条目**带归属 cid** —— 服务端据此做协同闸：撤单/选版/改署名
+ *     只认本人（别人拿你的 id 挂自己的 cid 也进不来）。
  *  2. 云端找歌（**全在服务器主程序里**）：点歌后云端先查歌曲仓库，命中
  *     直接出片；没有才走电报下载。找歌/下载/转码/合成播报的实时进度走
  *     fm891-radio/p/<id>，标签按进度改写。
@@ -14,7 +15,7 @@
  *     点条目走 __radio.playVod() 播单曲。
  *  5. **云同步开播**：fm891-radio/air（retain）= 服务器此刻在放的歌，带
  *     startedAt；app.js 收到后对齐进度自动跟播 —— 所有人同一时刻听同一段，
- *     像真电台。AI 播报（谁点的、送给谁、祝福语）已拼在音频开头。
+ *     像真电台。AI 播报（谁点的哪首 + 串场词）已拼在音频开头。
  *
  * 【隔离原则】
  *  本模块只通过 window.__radio 碰播放，入口只有 playVod（单曲/跟播都走它）。
@@ -127,8 +128,10 @@
       const cur = String(picking[it.id] || it.pick || '');
       if (candHint) {
         candHint.textContent = it.pick
-          ? ('已选第 ' + it.pick + ' 版 · 正按这版下')
-          : (cur ? '挑好了 → 点「就下这版」生效' : '挑一个版本（不挑就用推荐那版）');
+          ? ('已确认第 ' + it.pick + ' 版 · 正按这版下')
+          : (cur
+            ? ('挑好了：第 ' + cur + ' 版 · 点「确认」下这一版')
+            : '挑一个版本再点「确认」（没人替你选，不点就一直等你）');
       }
       candList.textContent = '';
       it.cands.forEach((cd) => {
@@ -157,7 +160,10 @@
       });
       if (candOk) {
         candOk.disabled = !cur || String(it.pick || '') === cur;
-        candOk.textContent = cur ? ('就下第 ' + cur + ' 版') : '选一版';
+        /* v1.21.12：按钮只写「确认」。以前写「就下第 2 版」信息更足，但用户
+           反馈「感觉没点确认它自己会选」—— 版本号挪到上面那行提示里，
+           按钮只回答一件事：你点不点确认。 */
+        candOk.textContent = '确认';
       }
       /* 撤单按钮只对自己的单亮：别人的歌你替人家撤了算怎么回事 */
       if (candCancel) candCancel.hidden = !isOwnReq(it);
@@ -346,7 +352,7 @@
     }
 
     /* ---------------- 点歌 ---------------- */
-    function addRequest(title, to, msg) {
+    function addRequest(title) {
       const t = String(title || '').trim().slice(0, 30);
       if (!t) { R.toast('先输入歌名'); return false; }
       const now = Date.now();
@@ -360,8 +366,6 @@
       });
       if (dup) { R.toast('你已经点过《' + t + '》啦'); return false; }
 
-      const sTo = String(to || '').trim().slice(0, 16);
-      const sMsg = String(msg || '').trim().slice(0, 60);
       /* 主播性格：你在点歌台里选的那个，跟着这一单发到云端。选「自动」就空着，
          服务器按时段挑（见 server.py 的 mood_of）。 */
       const sMood = curMood();
@@ -369,8 +373,8 @@
         id: myId + '-' + nextSeq(),
         cid: myId,
         who: myName(),
-        to: sTo,
-        msg: sMsg,
+        to: '',
+        msg: '',
         mood: sMood,
         title: t,
         ts: now,
@@ -389,8 +393,7 @@
       render();
       // 电台台单已下架：找歌全部交给云端主程序（先查仓库，没有再电报下载）。
       // 客户端不再自己扫台 —— 进度与结果都从 p/* 和 r/* 频道来。
-      say('收到 ' + it.who + ' 点的《' + t + '》' +
-        (sTo ? '，送给 ' + sTo : '') + '，云端主播马上安排 🎵');
+      say('收到 ' + it.who + ' 点的《' + t + '》，云端主播马上安排 🎵');
       return true;   // 真的入队了，调用方才可以清空输入框
     }
 
@@ -417,7 +420,10 @@
       /* miss（云端没找到）也在白名单里：以前这一档不在，未知 stage 一律被当成
        * search，服务器如实报了「没找到」客户端照样显示「找歌中」—— 用户只
        * 知道自己点的歌永远在找，不知道是找不到、也不知道能换一首。 */
-      const stages = ['search', 'download', 'transcode', 'merge', 'miss', 'cands'];
+      /* pickwait（v1.21.12）：云端等到窗口结束也没人点「确认」，于是停下不替 TA
+       * 选，把条目挂成「等你确认版本」。用户什么时候点了确认，下一轮就按那版下。 */
+      const stages = ['search', 'download', 'transcode', 'merge', 'miss', 'cands',
+                       'pickwait'];
       const stage = stages.indexOf(msg.stage) >= 0 ? msg.stage : 'search';
       const rec = {
         stage: stage,
@@ -542,6 +548,9 @@
 
     function progLabel(p) {
       if (p.stage === 'cands') return { text: '选一个版本 ↓', cls: 'st-search' };
+      if (p.stage === 'pickwait') {
+        return { text: '等你确认版本 · 没替你选', cls: 'st-wait' };
+      }
       if (p.stage === 'miss') return { text: '没找到这首歌 · 换一首吧', cls: 'st-miss' };
       if (p.stage === 'merge') return { text: '云端合成播报中…', cls: 'st-search' };
       if (p.stage === 'transcode') return { text: '转码中… 马上就好', cls: 'st-search' };
@@ -990,6 +999,98 @@
       }
     }
 
+    /* 一行条目（v1.21.12 紧凑版）：歌名 + 「谁 · 状态」，右侧状态徽章，
+     * 底下压一条 2px 进度线。原来每行 6 格步骤条 + 两块 chip + 状态字，
+     * 一条能占 3~4 行高，列表一长，点歌前得先滚过去。 */
+    function buildRow(it, i) {
+      const li = document.createElement('li');
+      li.className = 'req-item' + (isOwnReq(it) ? ' mine' : '');
+      const lab = stLabel(it, i);
+      const body = document.createElement('span');
+      body.className = 'req-body';
+      const t = document.createElement('em');
+      t.className = 'req-title';
+      t.textContent = it.title;
+      body.appendChild(t);
+      /* 第二行：「谁点的 · 状态」和选版把手并排 —— 以前它们各占一行，
+         一条歌能撑到 3~4 行，列表一长就得先滚。 */
+      const line2 = document.createElement('span');
+      line2.className = 'req-line2';
+      const meta = document.createElement('small');
+      meta.className = 'req-meta';
+      meta.textContent = it.who + (lab.text ? (' · ' + lab.text) : '');
+      line2.appendChild(meta);
+      body.appendChild(line2);
+      li.appendChild(body);
+      const st = document.createElement('i');
+      st.className = 'req-st ' + lab.cls;
+      st.textContent = lab.text;
+      li.appendChild(st);
+      /* 进度：6 格步骤条 → 一条按阶段走的细线 */
+      if (!it.del && it.st !== 'ready' && !vodFor(it) &&
+          (it.st !== 'miss' || freshProg(it.id))) {
+        const bar = document.createElement('span');
+        bar.className = 'req-pbar';
+        const fillI = document.createElement('i');
+        const stg = stepOf(it);
+        const pct = Math.min(100, Math.max(8, ((stg + 1) / STEP_NAMES.length) * 100));
+        fillI.style.width = pct.toFixed(0) + '%';
+        bar.appendChild(fillI);
+        li.appendChild(bar);   /* 绝对定位压在行底，不占额外高度 */
+      }
+      /* 选版本：**只给自己的单**把手。协同收紧（v1.21.12）：版本必须本人确认，
+         别人的单只显示「等 TA 确认版本」，不留越权操作的口子。 */
+      if (it.cands && it.cands.length > 1 && !it.del && it.st !== 'ready' &&
+          it.st !== 'onair' && !(airState && airState.id === it.id)) {
+        if (isOwnReq(it)) {
+          const chip = document.createElement('button');
+          chip.type = 'button';
+          chip.className = 'req-candchip' + (it.pick ? ' picked' : '');
+          chip.textContent = it.pick
+            ? ('已确认第 ' + it.pick + ' 版')
+            : ('选版本 · ' + it.cands.length + ' 版');
+          chip.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            openCandModal(it);
+          });
+          line2.appendChild(chip);
+        } else {
+          const w = document.createElement('span');
+          w.className = 'req-waitpick';
+          w.textContent = it.pick
+            ? ('TA 已确认第 ' + it.pick + ' 版')
+            : '等 TA 确认版本';
+          line2.appendChild(w);
+        }
+      }
+      /* 中途撤单 ✕：自己的单、还没开播才有 */
+      if (!it.del && isOwnReq(it) && !(airState && airState.id === it.id)) {
+        const xb = document.createElement('button');
+        xb.type = 'button';
+        xb.className = 'req-x';
+        xb.textContent = '✕';
+        xb.setAttribute('aria-label', '取消点歌');
+        xb.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          cancelRequest(it);
+        });
+        li.appendChild(xb);
+      }
+      return li;
+    }
+
+    /* 头部协同读数：一起点歌的有几个人。数据源是 app.js 的 presence 感知
+     * （连着同一个点歌台的客户端数，含本机）—— 拿不到就写「暂不可数」，
+     * 绝不显示 0 人（那等于当着用户说没人听）。 */
+    function paintLive() {
+      if (!reqLive) return;
+      let n = 0;
+      try {
+        n = (window.__fmPresence && Number(window.__fmPresence())) || 0;
+      } catch (_) { /* 忽略 */ }
+      reqLive.textContent = n > 0 ? (n + ' 人一起点歌') : '正在数人…';
+    }
+
     function render() {
       // 关窗 / 文档不可用时直接退出：本模块的原则是「任何情况下都不许抛」，
       // 扫描的 await 链可能在窗口关闭后才 resume 并走到这里。
@@ -1002,92 +1103,21 @@
       }
       const list = visible();
       const frag = document.createDocumentFragment();
-      list.forEach((it, i) => {
-        const li = document.createElement('li');
-        li.className = 'req-item';
-        if (it.cid && it.cid === myId) li.classList.add('mine');   // 自己点的标出来
-        const lab = stLabel(it, i);
-        /* 电台化：条目是队列，不再「点一下立刻播」—— 排进去就等电台轮到，
-         * 位次标签（第 N 位）+ 摘要就是大家关心的「什么时候轮到我」。 */
-        const num = document.createElement('b');
-        num.className = 'req-no';
-        num.textContent = '#' + (i + 1);
-        const body = document.createElement('span');
-        body.className = 'req-body';
-        const t = document.createElement('em');
-        t.className = 'req-title';
-        t.textContent = it.title;
-        const meta = document.createElement('small');
-        meta.className = 'req-meta';
-        meta.textContent = it.who + (it.to ? ' → ' + it.to : '');
-        body.appendChild(t);
-        body.appendChild(meta);
-        if (it.msg) {
-          const m = document.createElement('small');
-          m.className = 'req-msg';
-          m.textContent = '“' + it.msg + '”';
-          body.appendChild(m);
-        }
-        const st = document.createElement('i');
-        st.className = 'req-st ' + lab.cls;
-        st.textContent = lab.text;
-        li.appendChild(num);
-        li.appendChild(body);
-        li.appendChild(st);
-
-        /* v1.20.8：分环节进度条。走到哪一步哪一步就亮，条目自己会更新。
-         * 已删除 / 已备好（音源表命中）不画 —— 备好走到头了，位次徽章就是
-         * 它现在的意义；miss 结论要留得住（P4/P5：陈旧进度、发完就撤的
-         * 进度都不许翻案），但云端重试开搜带着**新鲜**进度时要照画，别哑着。
-         * 以前这道闸只认 st==='ready'，可 st 从来没人写成 ready，备好的
-         * 条目还挂着步骤条，服务端一撤进度就退回「已提交」，跟徽章
-         * 「第 N 位」自相矛盾（用户：「乱」）。 */
-        if (!it.del && it.st !== 'ready' && !vodFor(it) && (it.st !== 'miss' || freshProg(it.id))) {
-          const step = stepOf(it);
-          const bar = document.createElement('span');
-          bar.className = 'req-steps';
-          STEP_NAMES.forEach((nm, k) => {
-            const s = document.createElement('i');
-            s.className = 'req-step' + (k <= step ? ' on' : '') + (k === step ? ' now' : '');
-            s.textContent = nm;
-            bar.appendChild(s);
-          });
-          li.appendChild(bar);
-        }
-        /* 候选版本（v1.21.11 改弹窗）：行内不再铺列表，只留「选版本」把手 ——
-         * 新候选到达时自动弹一次（见 maybeOpenCand），把手负责随时重开。
-         * 正在播的不挂：服务端也会拒（air_state.id 相同就不换），把手挂着
-         * 只会让用户点了没反应。 */
-        if (it.cands && it.cands.length > 1 && !it.del && it.st !== 'ready' &&
-            it.st !== 'onair' && !(airState && airState.id === it.id)) {
-          const chip = document.createElement('button');
-          chip.type = 'button';
-          chip.className = 'req-candchip' + (it.pick ? ' picked' : '');
-          chip.textContent = it.pick
-            ? ('已选第 ' + it.pick + ' 版')
-            : ('选版本 · ' + it.cands.length + ' 版');
-          chip.addEventListener('click', (ev) => {
-            ev.stopPropagation();
-            openCandModal(it);
-          });
-          li.appendChild(chip);
-        }
-        /* 中途撤单 ✕（自己的单、还没开播才有）—— 用户原话「中途不想点
-         * 可以取消」。别人的单不给撤；正在播的撤了也追不回，藏掉。 */
-        if (!it.del && isOwnReq(it) && !(airState && airState.id === it.id)) {
-          const xb = document.createElement('button');
-          xb.type = 'button';
-          xb.className = 'req-x';
-          xb.textContent = '✕';
-          xb.setAttribute('aria-label', '取消点歌');
-          xb.addEventListener('click', (ev) => {
-            ev.stopPropagation();
-            cancelRequest(it);
-          });
-          li.appendChild(xb);
-        }
-        frag.appendChild(li);
-      });
+      /* v1.21.12：分组。自己的单永远在最上面，别人的在下面 —— 以前两类混排，
+         找自己那条得逐行扫（用户：「点歌那个页面很烂」）。 */
+      const mineRows = [];
+      const otherRows = [];
+      list.forEach((it, i) => { (isOwnReq(it) ? mineRows : otherRows).push([it, i]); });
+      const putGroup = (label, rows) => {
+        if (!rows.length) return;
+        const h = document.createElement('li');
+        h.className = 'req-group';
+        h.textContent = label;
+        frag.appendChild(h);
+        rows.forEach((pair) => { frag.appendChild(buildRow(pair[0], pair[1])); });
+      };
+      putGroup('我的点歌', mineRows);
+      putGroup(mineRows.length ? '大家的点歌' : '全网点歌', otherRows);
       // 整表重建先存滚动位置：不存的话，每次 MQTT/定时刷新都把列表甩回顶部，
       // 刚点完版本就「看着像没反应」。
       // v1.21.5：点歌台改成「单层滚动」—— 滚动容器从 reqList 上移到整个抽屉，
@@ -1101,6 +1131,7 @@
       reqList.scrollTop = _st;   // 还原（用户正在看的位置）
       if (_dlg) _dlg.scrollTop = _dST;
       renderSum(list);
+      paintLive();
 
       if (reqHint) {
         const qn = list.filter((x) => x && x.st !== 'miss').length;   // 出结论的不算在队
@@ -1182,11 +1213,15 @@
     const reqMask = $('reqMask');
     const reqForm = $('reqForm');
     const reqInput = $('reqInput');
-    const reqTo = $('reqTo');       // 送给谁（选填，会进播报词）
-    const reqMsg = $('reqMsg');     // 祝福语（选填，云端 AI 朗读拼在歌前面）
-    const reqBless = $('reqBless'); // AI 帮写祝福（按歌名从词本挑）
     const reqClose = $('reqClose');
     const reqX = $('reqX');           // 标题行常驻 ✕（用户反馈「返回按钮都没有」加的）
+    /* v1.21.12：reqTo / reqMsg / reqBless（送给谁 / 祝福语 / AI 写祝福）连同
+       GENERIC_BLESS、blessFor()、曲库 bless 词本一起删了 —— 用户原话「加一句
+       想说的有啥用，没用就删掉相关的代码」。曲库保留，只服务联想与速点。
+       头部新增：协同在线人数 + 昵称入口（昵称编辑从队列底部挪到这里）。 */
+    const nickBtn = $('nickBtn');
+    const reqNickBox = $('reqNickBox');
+    const reqLive = $('reqLive');
     const nickInput = $('nickInput');
     let nickTimer = null;
 
@@ -1335,24 +1370,43 @@
       reqForm.addEventListener('submit', (e) => {
         e.preventDefault();
         const v = reqInput ? reqInput.value : '';
-        const to = reqTo ? reqTo.value : '';
-        const msg = reqMsg ? reqMsg.value : '';
         // 只有真的入队了才清空：addRequest 有三条拒绝路径（空歌名 / 3 秒冷却 /
         // 已点过同一首），以前不管拒没拒都清 —— 连点两首时第二首的歌名刚敲完
         // 就被吞掉，用户只看到一句 toast，输入框却空了。
-        if (addRequest(v, to, msg)) {
+        if (addRequest(v)) {
           if (reqInput) reqInput.value = '';
-          if (reqTo) reqTo.value = '';
-          if (reqMsg) reqMsg.value = '';
         }
       });
+    }
+    /* 昵称：v1.21.12 从「队列底部的输入框」改成「头部一个小按钮 + 折叠编辑框」。
+     * 以前那个框永远摊在列表下面，改一次名字要滑过整张队列；而昵称恰恰是
+     * 协同里最该一眼看到、也最容易改的东西。 */
+    if (nickBtn) {
+      const paintNick = () => {
+        try { nickBtn.textContent = '昵称 · ' + myName(); } catch (_) { /* 忽略 */ }
+      };
+      paintNick();
+      nickBtn.addEventListener('click', () => {
+        if (!reqNickBox) return;
+        const open = !!reqNickBox.hidden;
+        reqNickBox.hidden = !open;
+        nickBtn.classList.toggle('on', open);
+        if (open && nickInput) {
+          try { nickInput.value = myName(); } catch (_) { /* 忽略 */ }
+          setTimeout(() => { try { nickInput.focus(); } catch (_) { /* 忽略 */ } }, 30);
+        }
+      });
+      R.onNick = paintNick;      // 改名后头部跟着更新
     }
     if (nickInput) {
       try { nickInput.value = myName(); } catch (_) { /* 忽略 */ }
       // 防抖 600ms：每敲一个字就回改历史条目 + 升 ver + 发快照，太吵
       nickInput.addEventListener('input', () => {
         clearTimeout(nickTimer);
-        nickTimer = setTimeout(() => setNick(nickInput.value), 600);
+        nickTimer = setTimeout(() => {
+          setNick(nickInput.value);
+          if (R.onNick) { try { R.onNick(); } catch (_) { /* 忽略 */ } }
+        }, 600);
       });
       nickInput.addEventListener('blur', () => {
         clearTimeout(nickTimer);
@@ -1367,33 +1421,6 @@
     let catalog = [];
     let catTimer = null;
     let lastOrigin = '';
-    const GENERIC_BLESS = [   // 曲库没连上时的兜底祝福（与服务端词本同款语气）。
-      // 条数必须跟服务端的 generic_bless 差不多：只有 5 条的时候，用户连点几次
-      // 「AI 写祝福」出来的都是同一句，看着就像按钮坏了。
-      '愿你听到想听的歌，见到想见的人。',
-      '这首歌，替我说声谢谢你。',
-      '愿此刻的你，被音乐温柔以待。',
-      '点一首歌，存一份好心情。',
-      '愿你眼里有光，耳里有歌。',
-      '夜深了还不睡的人，听完这首就早点休息吧。',
-      '这条夜路不短，但有歌陪着你，就不算太孤单。',
-      '愿你今晚睡得沉，明早醒来心里有光。',
-      '路上慢点开，别急，这首歌还没唱完。',
-      '愿你今天下班是带着笑走的。',
-      '累了就停一停，天不会塌。',
-      '今天已经很努力了，剩下的交给明天。',
-      '下雨天适合听歌，也适合什么都不想。',
-      '愿你出门带伞，回家有灯。',
-      '想一个人的时候，来点音乐，也算说说话了。',
-      '有些人不在身边，但歌替他们陪着你。',
-      '该放下的就放下吧，耳朵里要有新的声音。',
-      '愿你接下来的每一步，都算数。',
-      '你要的那件事，会成的，我押这首歌。',
-      '愿你越来越像你自己。',
-      '一个人也挺好的，至少歌是自己选的。',
-      '转个身，好事就来了——这首算个预告。',
-      '听完了，抖抖精神，上场吧。',
-    ];
 
     function catOrigin() {
       // 先问 air 消息自己（onAirMsg 里 airState 已就位，比等 app 转发更早）
@@ -1409,7 +1436,7 @@
     function ensureCatalog(force) {
       const base = catOrigin();
       if (!base) return;
-      /* force：每次打开点歌台都重新拉一次。原因：catalog.json 里的 bless 是
+      /* force：每次打开点歌台都重新拉一次。原因：catalog.json 里的清单是
        * 服务端**随机摇**的（每 20 分钟重摇一遍），而这里以前只要 catalog 非空
        * 就直接 return —— 结果整晚都吃同一份缓存，用户连点几首每首的「AI 写祝福」
        * 都一样，原话「咋每首歌都一样」。重拉一份几十 KB，值。 */
@@ -1491,18 +1518,6 @@
       ac.hidden = false;
     }
 
-    /* AI 写祝福：按当前歌名从词本挑（贴这首歌的），没匹配就用通用祝福 */
-    function blessFor(title) {
-      const t = String(title || '').trim();
-      let arr = [];
-      if (t) {
-        for (let k = 0; k < catalog.length; k++) {
-          if (catalog[k].title === t) { arr = catalog[k].bless || []; break; }
-        }
-      }
-      if (!arr.length) arr = GENERIC_BLESS;
-      return arr[Math.floor(Math.random() * arr.length)];
-    }
 
     // 联想：边打边出（120ms 防抖）；失焦 160ms 后收起（给点击留时间）
     if (reqInput) {
@@ -1513,14 +1528,6 @@
         acTimer = setTimeout(showAc, 120);
       });
       reqInput.addEventListener('blur', () => { setTimeout(hideAc, 160); });
-    }
-    if (reqBless) {
-      reqBless.addEventListener('click', () => {
-        ensureCatalog();
-        const v = blessFor(reqInput ? reqInput.value : '');
-        if (reqMsg) reqMsg.value = v;
-        R.toast('祝福语写好了，可以直接用或改改 ✨');
-      });
     }
 
     /* ---------------- 启动 ---------------- */
@@ -1557,7 +1564,7 @@
       /* 播报闸门要看队列长度才能验（第一条会被立刻取走开始打字，长度变 0） */
       sayQueueLen: () => sayQueue.length,
       /* 曲库链路：联想/AI 祝福/速点的数据与行为 */
-      catalog: () => catalog, ensureCatalog: ensureCatalog, blessFor: blessFor,
+      catalog: () => catalog, ensureCatalog: ensureCatalog, 
       showAc: showAc, hideAc: hideAc,
       /* 是否真的连上点歌台：mock 测试验不出来 retain 回放/遗嘱这些 broker 行为， */
       /* 真实 broker E2E 要靠它判断「可以开始断言了」，不靠猜时间。 */
