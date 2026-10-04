@@ -62,6 +62,10 @@
     const prog = new Map();         // id -> {stage, done, total, eta, ts}
     /* 云同步开播：服务器 retain 的「此刻在放」，带 startedAt 对齐所有人进度 */
     const AIR_NS = 'fm891-radio/air';
+    /* v1.21.15：搜索问答通道（请求与响应同一 topic）。
+       以前 App 只能看本地 catalog.json 的头几条，库外的歌压根搜不到，
+       用户原话「bot 能翻页，App 只能看到一页，必须联动」。 */
+    const SEARCH_NS = 'fm891-radio/s';
 
     /* ---------------- 点歌结果 = 一次性提醒（v1.21.9） ----------------
      * 用户原话：「失败了也一直显示、成功也一直显示，不能一次提醒就好了吗，
@@ -167,6 +171,8 @@
       }
       /* 撤单按钮只对自己的单亮：别人的歌你替人家撤了算怎么回事 */
       if (candCancel) candCancel.hidden = !isOwnReq(it);
+      /* 换一批要知道给哪一单换 */
+      try { const cm = $('candMore'); if (cm) cm.dataset.id = it.id || ''; } catch (_) { /* 忽略 */ }
     }
     function openCandModal(it) {
       if (!candMask || !it || !it.cands || !it.cands.length || it.del) return false;
@@ -927,6 +933,7 @@
         try { c.subscribe(READY_NS + '/#', { qos: 0 }); } catch (_) { /* 忽略 */ }
         try { c.subscribe(PROG_NS + '/#', { qos: 0 }); } catch (_) { /* 忽略 */ }
         try { c.subscribe(AIR_NS, { qos: 0 }); } catch (_) { /* 忽略 */ }
+        try { c.subscribe(SEARCH_NS + '/#', { qos: 0 }); } catch (_) { /* 忽略 */ }
         publish(true);
         render();
         say('点歌台已上线，全网听友的点歌会同步到这里');
@@ -957,6 +964,7 @@
         if (topic.indexOf(READY_NS + '/') === 0 && onReady(j)) render();
         // 云开播（retain 的「此刻在放」，单主题不是子树）
         if (topic === AIR_NS) onAirMsg(j);
+        if (topic.indexOf(SEARCH_NS + '/') === 0) onSearchMsg(j);
       });
       c.on('error', () => {
         // 秒切：没建立起来的连接（DNS 被 fake-IP 污染 = 秒拒）不等 9 秒 guard。
@@ -1385,15 +1393,21 @@
       // chips 全在屏幕外 —— 看着就像「抽屉是空的 / 打不开」。
       try { const d = reqMask.firstElementChild; if (d) d.scrollTop = 0; } catch (_) { /* 忽略 */ }
       // 联想下拉别带着上次的状态闪进来（关抽屉时也可能没来得及收）
-      try { const ac = document.getElementById('reqAc'); if (ac) ac.hidden = true; } catch (_) { /* 忽略 */ }
+      try { const p = document.getElementById('acPanel'); if (p) p.hidden = true; } catch (_) { /* 忽略 */ }
       // 每次打开回填当前昵称：用户可能在别处改过，或本地被清过
       if (nickInput && !nickInput.value) { try { nickInput.value = myName(); } catch (_) { /* 忽略 */ } }
-      setTimeout(() => { try { reqInput && reqInput.focus(); } catch (_) { /* 忽略 */ } }, 60);
+      /* 打开就摊开服务器曲库（输入框空着时），用户能自己核对「服务器上都有啥」 */
+      setTimeout(() => {
+        try {
+          reqInput && reqInput.focus();
+          if (reqInput && !String(reqInput.value || '').trim()) showLibrary();
+        } catch (_) { /* 忽略 */ }
+      }, 60);
     }
     function close() {
       if (reqMask) reqMask.hidden = true;
       // 关的时候把联想收掉：留着的话，遮罩透明度变化会把它「印」在背景上一帧
-      try { const ac = document.getElementById('reqAc'); if (ac) ac.hidden = true; } catch (_) { /* 忽略 */ }
+      try { const p = document.getElementById('acPanel'); if (p) p.hidden = true; } catch (_) { /* 忽略 */ }
     }
     /* 安卓返回键要能先关弹窗。以前 MainActivity 里 canGoBack() 恒为 false（只有一个
      * file:// 页面），返回键直接 super.onBackPressed() 把 App 关了 —— 点歌台开着
@@ -1432,6 +1446,24 @@
      * 取消点歌=撤单。 */
     if (candX) candX.addEventListener('click', () => closeCandModal(true));
     if (candLater) candLater.addEventListener('click', () => closeCandModal(true));
+    /* v1.21.15：版本不对就换一批 —— 服务器重新搜更深的候选、去掉已给过的那些，
+       重发候选列表（走原有 cands 进度通道，弹窗照旧刷新）。 */
+    const candMore = $('candMore');
+    if (candMore) candMore.addEventListener('click', () => {
+      if (!candMore.dataset.id || !client || !synced) return;
+      candMore.disabled = true;
+      candMore.textContent = '正在换…';
+      try {
+        client.publish(SEARCH_NS + '/' + myId, JSON.stringify({
+          op: 'more', id: candMore.dataset.id,
+        }), { qos: 0 });
+        say('正在换一批版本…');
+      } catch (_) { /* 忽略 */ }
+      setTimeout(() => {
+        candMore.disabled = false;
+        candMore.textContent = '换一批版本';
+      }, 8000);
+    });
     if (candOk) candOk.addEventListener('click', () => {
       const it = items.get(candFor);
       const cur = it ? String(picking[it.id] || '') : '';
@@ -1589,7 +1621,10 @@
        * 就直接 return —— 结果整晚都吃同一份缓存，用户连点几首每首的「AI 写祝福」
        * 都一样，原话「咋每首歌都一样」。重拉一份几十 KB，值。 */
       if (catalog.length && base === lastOrigin && !force) return;
-      if (catTimer) return;            // 4 秒防抖，避免连打请求
+      /* 防抖只挡「随手补拉」，不挡 force：force 的语义就是「我现在就要新的」。
+         以前两者一起 return，结果 4 秒内第二次打开点歌台时曲库压根没刷新
+         （联想与速点一直吃旧清单，测试里换曲库也被它悄悄拦掉）。 */
+      if (catTimer && !force) return;
       lastOrigin = base;
       catTimer = setTimeout(() => { catTimer = null; }, 4000);
       /* 老内核 / 测试环境可能没有 fetch：曲库是锦上添花，绝不许拖垮点歌台 */
@@ -1631,46 +1666,201 @@
     /* 输入联动联想：打「你的」下拉弹《你的选择》 */
     function hideAc() {
       const ac = $('reqAc');
-      if (ac) { ac.hidden = true; ac.innerHTML = ''; }
+      const panel = $('acPanel');
+      if (ac) ac.textContent = '';
+      if (panel) panel.hidden = true;
+      clearTimeout(acAutoTimer);
     }
-    function showAc() {
-      const ac = $('reqAc');
-      if (!ac || !reqInput) return;
-      const q = String(reqInput.value || '').trim();
-      ac.innerHTML = '';
-      if (!q || !catalog.length) { ac.hidden = true; return; }
-      /* v1.21.14：歌名、歌手都认 —— 用户脑子里记的是「周杰伦的晴天」，不是
-       * 只记得歌名；只匹配歌名会让他以为搜不出来。 */
-      const hits = [];
-      const lq = q.toLowerCase();
-      for (let k = 0; k < catalog.length && hits.length < 6; k++) {
+    /* ---------------- 搜索分页（v1.21.15）----------------
+     * 本地曲库命中 → 本地切页（毫秒级）；库外 → 问服务器（yt-dlp，带缓存）。
+     * 面板结构：.ac-panel > .ac-list + .ac-foot（页脚常驻，不随列表滚动）。 */
+    const AC_PER = 8;
+    /* hits = 本地命中的全集（按页切片渲染）；pageItems = 当前这一页要显示的条目。
+       两者必须分开：云端返回的**就是当页条目**，再按页码切一次会把末页切成空
+       （实测 3/3 页只有 1 条时列表空了）。 */
+    const acSt = { q: '', hits: [], pageItems: [], page: 1, pages: 1,
+                   src: '', rid: '', loading: false };
+    let acAutoTimer = null;
+
+    function acLocalHits(q) {
+      const lq = String(q).toLowerCase();
+      const out = [];
+      for (let k = 0; k < catalog.length; k++) {
         const c = catalog[k];
         const t = String(c.title || '');
+        if (!t) continue;
+        /* 歌名、歌手都认 —— 用户脑子里记的是「周杰伦的晴天」 */
         const a = String(c.artist || '').toLowerCase();
-        if (t === q || t.indexOf(q) >= 0 || (a && a.indexOf(lq) >= 0)) hits.push(c);
+        if (t === q || t.indexOf(q) >= 0 || (a && a.indexOf(lq) >= 0)) {
+          out.push({ t: t, a: c.artist || '', d: c.dur || 0 });
+        }
       }
-      if (!hits.length) { ac.hidden = true; return; }
-      hits.forEach((c) => {
+      out.sort((x, y) => (x.t === q ? 0 : 1) - (y.t === q ? 0 : 1) || x.t.length - y.t.length);
+      return out;
+    }
+
+    function searchAsk(q, page) {
+      if (!client || !synced || !q) return false;
+      const rid = 'r' + (Date.now() % 1000000);
+      acSt.rid = rid; acSt.q = q; acSt.page = page || 1; acSt.loading = true;
+      try {
+        client.publish(SEARCH_NS + '/' + myId,
+          JSON.stringify({ op: 'q', q: q, page: acSt.page, per: AC_PER, rid: rid }),
+          { qos: 0 });
+      } catch (_) { return false; }
+      renderAc();
+      return true;
+    }
+
+    function onSearchMsg(j) {
+      if (!j || j.op !== 'res') return;
+      if (acSt.rid && j.rid && String(j.rid) !== acSt.rid) return;   // 不是这次问的
+      acSt.loading = false;
+      if (j.loading) { renderAc(); return; }                          // 「云端在搜…」
+      acSt.hits = [];                       // 云端结果不并进本地全集
+      acSt.pageItems = Array.isArray(j.items) ? j.items : [];
+      acSt.page = Number(j.page) || 1;
+      acSt.pages = Number(j.pages) || 1;
+      acSt.src = j.src || 'yt';
+      renderAc();
+    }
+
+    function renderAc() {
+      const panel = $('acPanel');
+      const ul = $('reqAc');
+      if (!panel || !ul || !reqInput) return;
+      const q = String(reqInput.value || '').trim();
+      ul.textContent = '';
+      /* 只有「不是浏览曲库、而且输入框空了」才收面板。
+         浏览曲库（src='lib'）时输入框本来就是空的 —— 以前这里无条件 return，
+         刚摊开的曲库立刻被自己收回去，面板根本不显示（截图实锤）。 */
+      if (!q && acSt.src !== 'lib') { panel.hidden = true; return; }
+      if (acSt.loading) {
+        const li = document.createElement('li');
+        li.className = 'ac-src';
+        li.textContent = '云端搜索中…（第一次要等几秒）';
+        ul.appendChild(li);
+        panel.hidden = false;
+        paintAcFoot();
+        return;
+      }
+      if (!acSt.pageItems.length) {
+        const li = document.createElement('li');
+        li.className = 'ac-src';
+        li.textContent = acSt.src === 'yt'
+          ? '云端也没搜到《' + q + '》，换个写法或只写歌名试试'
+          : '本地曲库没有《' + q + '》· 点「云端搜」全网找';
+        ul.appendChild(li);
+        panel.hidden = false;
+        paintAcFoot();
+        return;
+      }
+      acSt.pageItems.forEach((c) => {
         const li = document.createElement('li');
         li.className = 'ac-item';
         const em = document.createElement('em');
-        em.textContent = c.title;
+        em.textContent = c.t;
         li.appendChild(em);
-        if (c.artist) {
+        if (c.a) {
           const sp = document.createElement('span');
           sp.className = 'ac-artist';
-          sp.textContent = c.artist;
+          sp.textContent = c.a;
           li.appendChild(sp);
         }
         li.addEventListener('click', () => {
-          if (reqInput) { reqInput.value = c.title; reqInput.focus(); }
+          if (reqInput) { reqInput.value = c.t; reqInput.focus(); }
           hideAc();
         });
-        ac.appendChild(li);
+        ul.appendChild(li);
       });
-      ac.hidden = false;
+      panel.hidden = false;
+      paintAcFoot();
     }
 
+    function paintAcFoot() {
+      const prev = $('acPrev');
+      const next = $('acNext');
+      const page = $('acPage');
+      const cloud = $('acCloud');
+      if (!prev || !next || !page || !cloud) return;
+      const multi = acSt.pages > 1;
+      prev.disabled = !multi || acSt.page <= 1;
+      next.disabled = !multi || acSt.page >= acSt.pages;
+      page.textContent = multi ? (acSt.page + '/' + acSt.pages)
+        : (acSt.src === 'yt' ? (acSt.pageItems.length + ' 首') : (acSt.hits.length + ' 首'));
+      const isCloud = acSt.src === 'yt';
+      cloud.textContent = acSt.loading ? '搜索中…'
+        : (isCloud ? '重新搜云端' : '云端搜《' + String(reqInput.value || '').trim() + '》');
+      cloud.disabled = !!acSt.loading || !String(reqInput.value || '').trim();
+    }
+
+    function acGo(delta) {
+      const p = acSt.page + delta;
+      if (p < 1 || p > acSt.pages) return;
+      acSt.page = p;
+      if (acSt.src !== 'yt') {                 // 本地全集自己切页
+        acSt.pageItems = acSt.hits.slice((p - 1) * AC_PER, p * AC_PER);
+      }
+      renderAc();
+      /* 云端结果翻页要问服务器（本地页随便切） */
+      if (acSt.src === 'yt' && acSt.q) searchAsk(acSt.q, p);
+    }
+
+    /* v1.21.15：输入框空着时也把**服务器曲库**摊开可翻。
+       审查发现的缺口：以前必须先打字才出列表，「服务器上有的歌都还在」这件事
+       用户没法自己核对 —— 现在打开点歌台就能一页页翻，点哪首点哪首。 */
+    function showLibrary() {
+      if (!catalog.length) { hideAc(); return; }
+      const hits = catalog.map((c) => ({
+        t: String(c.title || ''), a: String(c.artist || ''), d: c.dur || 0,
+      }));
+      acSt.q = ''; acSt.hits = hits; acSt.src = 'lib'; acSt.loading = false;
+      acSt.rid = '';
+      acSt.pages = Math.max(1, Math.ceil(hits.length / AC_PER));
+      if (acSt.page > acSt.pages) acSt.page = 1;
+      acSt.pageItems = hits.slice((acSt.page - 1) * AC_PER, acSt.page * AC_PER);
+      renderAc();
+    }
+
+    function showAc() {
+      if (!reqInput) return;
+      const q = String(reqInput.value || '').trim();
+      if (!q) { showLibrary(); return; }
+      if (acSt.q !== q) {
+        acSt.q = q; acSt.page = 1; acSt.loading = false; acSt.rid = '';
+        const hits = acLocalHits(q);
+        acSt.hits = hits;
+        acSt.pages = Math.max(1, Math.ceil(hits.length / AC_PER));
+        acSt.pageItems = hits.slice(0, AC_PER);
+        acSt.src = hits.length ? 'repo' : '';
+      }
+      renderAc();
+      /* 本地没有 → 停 0.8 秒自动问一次云端（只问一次；改字才再问） */
+      if (!acSt.hits.length && !acSt.pageItems.length && !acSt.loading
+          && acSt.src !== 'yt' && q.length >= 2) {
+        clearTimeout(acAutoTimer);
+        acAutoTimer = setTimeout(() => {
+          if (acSt.q === q && !acSt.hits.length && !acSt.pageItems.length
+            && !acSt.loading) searchAsk(q, 1);
+        }, 800);
+      }
+    }
+
+
+    /* 页脚：上一页 / 下一页 / 云端搜 */
+    (function wireAcFoot() {
+      const prev = $('acPrev');
+      const next = $('acNext');
+      const cloud = $('acCloud');
+      if (prev) prev.addEventListener('click', () => acGo(-1));
+      if (next) next.addEventListener('click', () => acGo(1));
+      if (cloud) cloud.addEventListener('click', () => {
+        const q = String(reqInput && reqInput.value || '').trim();
+        if (!q) return;
+        acSt.page = 1;
+        searchAsk(q, 1);
+      });
+    }());
 
     // 联想：边打边出（120ms 防抖）；失焦 160ms 后收起（给点击留时间）
     if (reqInput) {
@@ -1702,6 +1892,11 @@
       norm: norm, visible: visible, render: render, say: say,
       publish: publish,
       myName: myName, setNick: setNick,
+      /* 搜索分页：测试要能直接喂搜索响应 */
+      acState: acSt, showAc: showAc, showLibrary: showLibrary,
+      onSearchMsg: onSearchMsg,
+      searchAsk: searchAsk, renderAc: renderAc,
+      SEARCH_NS: SEARCH_NS,
       /* 「歌已备好」这条链路：测试要能直接喂消息 */
       ready: ready, onReady: onReady, vodFor: vodFor, findItem: findItem,
       /* 云端实时进度：和 ready 一样要能被测试直接喂消息 */

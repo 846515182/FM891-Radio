@@ -153,7 +153,17 @@
         <div class="req-compose-row">
           <div class="ac-wrap">
             <input id="reqInput" type="text" placeholder="想听哪首歌？主播全网找" maxlength="30" />
-            <ul class="ac-list" id="reqAc" hidden></ul>
+            <!-- v1.21.15：联想面板 = 列表 + 页脚。页脚是「能翻页」的载体 ——
+                 以前只有前 6 条，用户原话「只能看到一页，必须联动（bot 能翻页）」。 -->
+            <div class="ac-panel" id="acPanel" hidden>
+              <ul class="ac-list" id="reqAc"></ul>
+              <div class="ac-foot">
+                <button type="button" class="ac-pg" id="acPrev">上一页</button>
+                <span class="ac-pg-n" id="acPage">1/1</span>
+                <button type="button" class="ac-pg" id="acNext">下一页</button>
+                <button type="button" class="ac-cloud" id="acCloud">云端搜</button>
+              </div>
+            </div>
           </div>
           <button class="primary req-go" id="reqGo" type="submit">点歌</button>
         </div>
@@ -205,6 +215,8 @@
       <span class="req-cands-list" id="candList"></span>
       <div class="dialog-actions">
         <button class="req-cand-ok" id="candOk" type="button">确定</button>
+        <!-- v1.21.15：版本不对就换一批（服务器重新搜更深的候选，去掉已给过的） -->
+        <button class="cand-more" id="candMore" type="button">换一批版本</button>
         <button class="cand-later" id="candLater" type="button">稍后再说</button>
         <button class="cand-cancel" id="candCancel" type="button">取消点歌</button>
       </div>

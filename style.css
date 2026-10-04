@@ -87,17 +87,6 @@ body {
   color: transparent;
 }
 
-.live-dot {
-  font-size: 11px;
-  font-weight: 700;
-  color: #34d399;
-  background: rgba(52, 211, 153, 0.14);
-  border: 1px solid rgba(52, 211, 153, 0.4);
-  padding: 3px 8px;
-  border-radius: 999px;
-  animation: breathe 2.4s ease-in-out infinite;
-}
-
 @keyframes breathe {
   0%, 100% { box-shadow: 0 0 0 rgba(52, 211, 153, 0); }
   50% { box-shadow: 0 0 12px rgba(52, 211, 153, 0.55); }
@@ -112,54 +101,10 @@ body {
 
 /* 实时在线人数徽章（官方数据优先：蜻蜓FM 官方 audience_count；取不到时降级
  * 公共 MQTT 在线感知。状态全程可见：… 加载中 / 数字在线 / – 线路暂不可用） */
-.online-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  margin-top: 9px;
-  padding: 4px 13px;
-  border-radius: 999px;
-  font-size: 11px;
-  letter-spacing: 1.5px;
-  color: #6ee7b7;
-  background: rgba(52, 211, 153, 0.12);
-  border: 1px solid rgba(52, 211, 153, 0.35);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  box-shadow: 0 4px 14px rgba(52, 211, 153, 0.18);
-  animation: fadeUp 0.3s ease both;
-}
-
-.online-pill b {
-  font-weight: 800;
-  color: #34d399;
-  min-width: 1ch;
-  text-align: center;
-}
 
 /* 「官方」角标：数字来自蜻蜓FM 官方接口时点亮，降级到本机感知时隐藏 */
-.online-pill .src {
-  margin-left: 1px;
-  padding: 1px 6px;
-  border-radius: 999px;
-  font-style: normal;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 1px;
-  color: #a7f3d0;
-  background: rgba(52, 211, 153, 0.22);
-  border: 1px solid rgba(52, 211, 153, 0.42);
-}
-
-.online-pill .src[hidden] { display: none; }
-
-.online-pill[hidden] { display: none; }
 
 /* 线路全部失败态（–）：变暗但仍可见，功能在线、线路暂不可用 */
-.online-pill.dim {
-  opacity: 0.55;
-  filter: grayscale(0.4);
-}
 
 .brand-avatar {
   width: 42px;
@@ -341,56 +286,6 @@ body.playing .eq i:nth-child(5) { animation-delay: 0.6s; }
 .stage .now-title:empty { display: none; }
 
 /* ---------- 播放控制 ---------- */
-.controls {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 26px;
-  margin-top: 26px;
-}
-
-.play-btn {
-  width: 86px;
-  height: 86px;
-  border: none;
-  border-radius: 50%;
-  background: var(--grad);
-  color: #fff;
-  display: grid;
-  place-items: center;
-  cursor: pointer;
-  box-shadow:
-    0 16px 40px rgba(236, 72, 152, 0.5),
-    0 6px 18px rgba(139, 92, 246, 0.45),
-    inset 0 0 0 1.5px rgba(255, 255, 255, 0.35),
-    inset 0 -6px 14px rgba(0, 0, 0, 0.18);
-  transition: transform 0.15s ease;
-}
-
-.play-btn:active { transform: scale(0.94); }
-
-.play-btn svg { width: 36px; height: 36px; fill: currentColor; }
-.play-btn .ic-pause { display: none; }
-.play-btn.is-playing .ic-play { display: none; }
-.play-btn.is-playing .ic-pause { display: block; }
-
-.round-btn {
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.07);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  color: var(--text);
-  display: grid;
-  place-items: center;
-  cursor: pointer;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28);
-}
-
-.round-btn:active { transform: scale(0.94); }
-.round-btn svg { width: 24px; height: 24px; fill: currentColor; }
 
 /* ---------- 音量 ---------- */
 .volume {
@@ -447,18 +342,6 @@ body.playing .eq i:nth-child(5) { animation-delay: 0.6s; }
 }
 
 /* ---------- 分类切换条（887 路台单先按节目类型分栏，否则一条胶囊滑不到头） ---------- */
-.cats {
-  display: flex;
-  flex-direction: row;
-  gap: 6px;
-  margin-top: 16px;
-  padding: 2px;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  scrollbar-width: none;
-}
-
-.cats::-webkit-scrollbar { display: none; }
 
 .cat {
   position: relative;
@@ -497,20 +380,6 @@ body.playing .eq i:nth-child(5) { animation-delay: 0.6s; }
 .cat.active small { opacity: 0.9; }
 
 /* ---------- 频道胶囊条（播放器内横向滑动） ---------- */
-.stations {
-  display: flex;
-  flex-direction: row;
-  gap: 8px;
-  margin-top: 12px;
-  padding: 2px 2px 4px;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  scroll-snap-type: x proximity;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-}
-
-.stations::-webkit-scrollbar { display: none; }
 
 .station {
   position: relative;
@@ -793,7 +662,6 @@ footer {
   * { animation: none !important; transition: none !important; }
 }
 
-
 /* ==================== 在线点歌（阶段 1） ==================== */
 
 /* 主播气泡：播放器下方一条，点击打开点歌台 */
@@ -999,14 +867,6 @@ footer {
 }
 
 /* 祝福语：跟在点歌人后面 —— 谁送给谁、说了什么，列表里一眼看见 */
-.req-msg {
-  font-size: 11px;
-  color: var(--accent2);
-  opacity: 0.9;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
 .req-st {
   flex: none;
@@ -1020,7 +880,6 @@ footer {
 
 .st-wait   { background: rgba(255, 255, 255, 0.08); color: var(--muted); }
 .st-search { background: rgba(56, 189, 248, 0.16); color: #7dd3fc; }
-.st-ready  { background: rgba(139, 92, 246, 0.2);  color: #c4b5fd; }
 .st-play   { background: rgba(236, 72, 152, 0.22); color: #f9a8d4; }
 .st-miss   { background: rgba(255, 255, 255, 0.07); color: #9a90c4; }
 
@@ -1119,29 +978,6 @@ footer {
 /* ================= 时光电台 v1.19 · 界面重做 ================= */
 
 /* —— 头部统计（在线 + 曲库）—— */
-.pill-row {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 10px;
-}
-.pill-row .online-pill { margin-top: 0; }
-.lib-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11.5px;
-  font-weight: 700;
-  color: #fde68a;
-  background: rgba(250, 204, 21, 0.1);
-  border: 1px solid rgba(250, 204, 21, 0.28);
-  padding: 5px 11px;
-  border-radius: 999px;
-}
-.lib-pill[hidden] { display: none; }
-.lib-pill b { font-weight: 800; color: #fef3c7; }
 
 /* —— 正在播信息区：歌手行 + 播报字幕卡 + 信息 chips —— */
 .stage .now-artist {
@@ -1239,23 +1075,6 @@ footer {
 .chip:active { background: rgba(139, 92, 246, 0.4) !important; }
 
 /* —— 点歌台：祝福语 + AI 按钮同行 —— */
-.msg-row { display: flex; gap: 8px; align-items: stretch; }
-.msg-row textarea { flex: 1; min-width: 0; }
-.msg-row .bless-btn {
-  flex: none;
-  width: auto;
-  margin: 0;
-  padding: 8px 12px;
-  font-size: 12.5px;
-  font-weight: 800;
-  color: #fbcfe8;
-  background: linear-gradient(135deg, rgba(236, 72, 152, 0.24), rgba(139, 92, 246, 0.24));
-  border: 1px solid rgba(244, 114, 182, 0.45);
-  border-radius: 12px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.msg-row .bless-btn:active { transform: scale(0.96); }
 
 /* —— 点歌台：排队摘要（第几位轮到我）—— */
 .req-sum {
@@ -1286,17 +1105,7 @@ footer {
 }
 body.playing .stage h1 {
   animation: titleGlow 4.5s ease-in-out infinite;
-}
-@keyframes titleGlow {
-  0%, 100% { text-shadow: 0 2px 22px rgba(139, 92, 246, 0.4); }
-  50% { text-shadow: 0 2px 30px rgba(240, 171, 252, 0.65); }
-}
-
-/* ============ v1.20.1 · 压紧布局 + 科技感（末尾覆盖块）============
- * 全部改动只写在文件末尾：选择器与上面同特异性、源码顺序在后即生效，
- * 历史规则一条没动 —— static-check 断言的 .station:first-child::after /
- * .online-pill / .online-pill.dim / .air-bar / .req-msg / .online-pill .src /
- * [hidden]{display:none!important} 全部原样保留。
+} 全部原样保留。
  * ① 压紧：封面 256→150、各段留白收窄，整屏约省 200px（原来要滚一屏）；
  * ② 科技感：HUD 斜角括号、底纹网格、封面扫描线、霓虹青高亮、等宽数字。 */
 
@@ -1308,7 +1117,6 @@ body.playing .stage h1 {
 .brand-logo { font-size: 20px; }
 .brand-avatar { width: 34px; height: 34px; }
 .slogan { margin: 5px 0 0; }
-.pill-row { margin-top: 6px; }
 
 /* —— ① 压紧：播放器卡片 —— */
 .player {
@@ -1391,14 +1199,7 @@ body.playing .stage h1 {
 .dj-bubble { margin-top: 10px; padding: 8px 11px; }
 .vod-row { margin-top: 10px; }
 footer { margin-top: 14px; }
-.link-btn { margin-top: 6px; }
-
-/* —— ② 科技感：等宽数字（在线人数 / 曲库 / 进度时刻 / 排位序号）—— */
-.online-pill b,
-.lib-pill b,
-.vod-time,
-.req-no,
-.upd-pct {
+.link-btn { margin-top: 6px; }.vod-time,.req-no,.upd-pct{
   font-family: "SFMono-Regular", "Roboto Mono", Consolas, "Liberation Mono", monospace;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.5px;
@@ -1466,104 +1267,6 @@ footer { margin-top: 14px; }
 .song-meta { margin-top: 9px; }
 
 /* —— 接下来：横向滑动歌单 —— */
-.upnext {
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid rgba(255, 255, 255, .09);
-}
-.upnext[hidden] { display: none !important; }
-
-.upnext-h {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  margin-bottom: 8px;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 2.5px;
-  color: rgba(34, 211, 238, .85);
-}
-.upnext-tip {
-  font-style: normal;
-  font-size: 10px;
-  font-weight: 400;
-  letter-spacing: 0;
-  color: var(--muted);
-  opacity: .55;
-}
-
-.upnext-strip {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding-bottom: 3px;
-  scroll-snap-type: x proximity;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-}
-.upnext-strip::-webkit-scrollbar { display: none; }
-
-.upnext-item {
-  position: relative;
-  flex: none;
-  width: 136px;
-  scroll-snap-align: start;
-  padding: 8px 10px 9px;
-  border-radius: 13px;
-  border: 1px solid rgba(34, 211, 238, .22);
-  background: linear-gradient(160deg, rgba(34, 211, 238, .08), rgba(139, 92, 246, .07));
-}
-.upnext-item.lib {
-  border-color: rgba(255, 255, 255, .09);
-  background: rgba(255, 255, 255, .035);
-}
-.upnext-no {
-  position: absolute;
-  top: 7px;
-  right: 9px;
-  font-family: "SFMono-Regular", "Roboto Mono", Consolas, monospace;
-  font-size: 10px;
-  font-weight: 700;
-  color: rgba(34, 211, 238, .6);
-}
-.upnext-main {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  padding-right: 12px;
-}
-.upnext-main b {
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.upnext-main small {
-  font-size: 10.5px;
-  color: var(--muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.upnext-who {
-  display: inline-block;
-  margin-top: 5px;
-  max-width: 100%;
-  padding: 1px 7px;
-  border-radius: 999px;
-  font-size: 9.5px;
-  font-weight: 700;
-  color: #f5d0fe;
-  background: rgba(236, 72, 152, .16);
-  border: 1px solid rgba(236, 72, 152, .3);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 
 /* ============ 候选版本：让用户自己挑哪一版 ============
  * 「点的歌没有一首是对的版本」—— 机器猜不准哪条是原唱，那就把 bot 那一页
@@ -1809,8 +1512,6 @@ footer { margin-top: 14px; }
 }
 
 /* 徽章整排撤掉后不再占任何空间 */
-.pill-row { display: none !important; }
-.live-dot { display: none !important; }
 
 /* —— 播放器：左排队栏 + 右正在播放 —— */
 .player {
@@ -1964,77 +1665,12 @@ footer { margin-top: 14px; }
 /* —— v1.20.8：点歌分环节进度条 ——
    用户：「点歌每个环节显示进度」。以前只有一行字（下载中 3/5 MB），
    不知道卡在哪一步。六个环节各一个节点，走到哪亮到哪，`.now` 是当前步。 */
-.req-steps {
-  flex-basis: 100%;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  margin: 6px 0 2px;
-  padding-left: 2px;
-}
-
-.req-step {
-  position: relative;
-  flex: 1;
-  min-width: 0;
-  font-style: normal;
-  font-size: 11px;
-  line-height: 1.5;
-  text-align: center;
-  color: rgba(184, 173, 224, .42);
-  padding-top: 8px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 
 /* 节点圆点 */
-.req-step::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 50%;
-  width: 6px;
-  height: 6px;
-  margin-left: -3px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, .16);
-  border: 1px solid rgba(255, 255, 255, .22);
-}
 
 /* 节点之间的连线：走到哪一段就亮哪一段 */
-.req-step::after {
-  content: '';
-  position: absolute;
-  top: 3px;
-  left: 50%;
-  width: 100%;
-  height: 1px;
-  background: rgba(255, 255, 255, .12);
-}
-
-.req-step:last-child::after { display: none; }
-
-.req-step.on { color: rgba(103, 232, 249, .9); }
-.req-step.on::before {
-  background: #22d3ee;
-  border-color: #67e8f9;
-  box-shadow: 0 0 7px rgba(34, 211, 238, .7);
-}
-.req-step.on::after { background: rgba(34, 211, 238, .45); }
 
 /* 当前步：脉动一下，让眼睛能一下找到「现在到哪」 */
-.req-step.now {
-  color: #fff;
-  font-weight: 800;
-}
-
-.req-step.now::before {
-  background: var(--grad);
-  border-color: #f9a8d4;
-  box-shadow: 0 0 10px rgba(236, 72, 152, .9);
-  animation: stepPulse 1.3s ease-in-out infinite;
-}
 
 @keyframes stepPulse {
   0%, 100% { transform: scale(1); opacity: 1; }
@@ -2238,15 +1874,7 @@ footer { flex: none; margin-top: 10px; }
   --ease: cubic-bezier(.22, .9, .3, 1);
   --t-fast: .16s;
   --t-med: .26s;
-}
-
-.brand,
-.dj-bubble,
-.req-cand,
-.req-cand-ok,
-.req-chip,
-.chip,
-.volume input[type="range"] {
+}.brand,.dj-bubble,.req-cand,.req-cand-ok,.chip,.volume input[type="range"]{
   transition: transform var(--t-fast) var(--ease),
               box-shadow var(--t-med) var(--ease),
               background-color var(--t-fast) var(--ease),
@@ -2291,7 +1919,6 @@ footer { flex: none; margin-top: 10px; }
 }
 
 /* 分环节进度条的当前步：脉动 */
-.req-step.now::before { animation: stepPulse 1.4s ease-in-out infinite; }
 
 /* 抽屉：滑入用真实位移，收起时不留残影 */
 .dialog-mask { animation: maskIn .2s var(--ease) both; }
@@ -2305,7 +1932,7 @@ footer { flex: none; margin-top: 10px; }
     animation-duration: .001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: .001ms !important;
-  }
+}
 }
 
 /* 卡片撑满后内容别全顶在上头（底部空一大截很难看）：垂直居中，空白均分上下 */
@@ -2343,9 +1970,7 @@ footer { flex: none; margin-top: 10px; }
 }
 
 .req-body { flex: 1 1 60%; min-width: 0; }
-.req-st { flex: 0 0 auto; margin-left: auto; }
-.req-steps,
-.req-cands {
+.req-st { flex: 0 0 auto; margin-left: auto; }.req-cands{
   flex: 1 0 100%;
   min-width: 0;
   box-sizing: border-box;
@@ -2637,7 +2262,6 @@ body.track-change #cover {
   width: min(72%, 26vh);
 }
 
-
 /* ============ 封面尺寸 · 根因修复（v1.21.5） ============
    中间那片空洞查了三层才到底，两个坑叠在一起：
 
@@ -2786,7 +2410,6 @@ body.track-change #cover {
   box-shadow: 0 -12px 18px -12px rgba(0, 0, 0, 0.9);
 }
 
-
 /* 封面图本体：铺满圆形盒子。走 <img> 不走 background（原因见 index.html 注释）。 */
 #cover .cover-img {
   display: block;
@@ -2797,7 +2420,6 @@ body.track-change #cover {
   /* 与父盒的 border-radius 一致，避免圆角外溢出方角 */
   pointer-events: none;
 }
-
 
 /* ============ v1.21.7 · flex `gap` 在这台 WebView 不生效的兜底 ============
    CDP 运行时实验证明：computed 显示 columnGap=9px/8px，但子元素实际间距
@@ -2813,7 +2435,6 @@ body.track-change #cover {
 .vod-row > * + * { margin-left: 9px; }
 .volume input[type="range"] { margin-left: 10px; margin-right: 10px; }
 .dj-bubble .dj-face { margin-right: 10px; }
-
 
 /* ============ ⑨ 播报文案溢出压到心愿条（截图里框底那半行字） ============
    line-clamp(3) 在这台 WebView 只把**盒子高度**限到 3 行（省略号也加了），
@@ -3131,3 +2752,87 @@ body.track-change #cover {
   font-size: 12px;
   color: var(--muted);
 }
+
+/* ============ v1.21.15 搜索分页：联想面板 + 页脚 ============
+   以前联想是「绝对定位的 ul，最多 6 条」，没有翻页也没有云端入口。
+   现在列表与页脚包在 .ac-panel 里，页脚常驻在列表下方（不随列表滚动），
+   点歌台 WebView 低于 Chrome 84（gap/inset 无效），一律用 margin。 */
+.ac-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 6;
+  padding: 6px;
+  background: #161031;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.5);
+}
+.ac-panel[hidden] { display: none; }
+.ac-panel .ac-list {
+  position: static;
+  max-height: 208px;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+.ac-foot {
+  display: flex;
+  align-items: center;
+  margin-top: 4px;
+  padding: 5px 2px 1px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+/* 特异性要压过 `.req-form button{width:100%}`（0,1,1）：这里用两级类名。
+   截图实锤过：不压的话三个按钮全被拉成整行宽，页脚直接塌掉。 */
+.ac-panel .ac-pg, .ac-panel .ac-cloud {
+  flex: none;
+  width: auto;
+  min-width: 62px;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.ac-panel .ac-pg:disabled, .ac-panel .ac-cloud:disabled { opacity: 0.4; }
+.ac-panel .ac-pg:active, .ac-panel .ac-cloud:active { background: rgba(139, 92, 246, 0.28); }
+.ac-panel .ac-pg-n {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: center;
+  font-size: 11px;
+  color: var(--muted);
+}
+.ac-panel .ac-cloud {
+  margin-left: 8px;
+  border-color: rgba(236, 72, 153, 0.4);
+  color: #f9a8d4;
+}
+.ac-src {
+  display: block;
+  padding: 6px 8px 2px;
+  font-size: 11px;
+  color: var(--muted);
+}
+/* 换一批版本：与「稍后再说」同级的次要按钮 */
+.cand-more {
+  flex: none;
+  width: auto;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(236, 72, 153, 0.35);
+  background: rgba(236, 72, 153, 0.10);
+  color: #f9a8d4;
+  font-size: 12px;
+  cursor: pointer;
+}
+.cand-more:active { background: rgba(236, 72, 153, 0.22); }
+.cand-more:disabled { opacity: 0.5; }
