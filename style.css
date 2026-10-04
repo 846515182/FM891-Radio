@@ -2953,3 +2953,181 @@ body.track-change #cover {
   height: 2px;
   background: linear-gradient(90deg, #8b5cf6, #ec4899);
 }
+
+/* ============ v1.21.14 点歌台 v3：视觉重做 ============
+   上一版只调了信息顺序，界面还是一堆表单控件堆在一起（用户：「点歌界面太丑了」）。
+   这次按「一张搜索卡 + 一张我的歌卡 + 一列轻量行」重画：
+     · 创作区是一张带品牌渐变的卡，输入框无边框地嵌在卡里，点歌按钮是卡上的渐变胶囊
+     · 「我的歌」单独一张卡：粉紫渐变左边条 + 大字歌名 + 位次与预计时间
+     · 队列行改成圆角轻卡片，序号是小圆徽章，状态是小胶囊
+     · 历史折叠区同样卡片化
+   这台 WebView 低于 Chrome 84（gap/inset 无效），所以一律用 margin 与百分比圆角。 */
+
+.compose-card {
+  position: relative;
+  margin: 0 0 10px;
+  padding: 10px 10px 8px;
+  border-radius: 18px;
+  border: 1px solid rgba(236, 72, 153, 0.26);
+  background:
+    linear-gradient(180deg, rgba(236, 72, 153, 0.14), rgba(139, 92, 246, 0.07));
+  box-shadow: 0 10px 24px -14px rgba(236, 72, 153, 0.55);
+}
+.compose-card .req-form { margin: 0; }
+/* 嵌在卡里的输入框：自己不再画框，卡就是框 */
+.compose-card .req-form input {
+  border: 0;
+  background: transparent;
+  padding: 8px 10px;
+  font-size: 15px;
+}
+.compose-card .req-form input:focus { outline: none; }
+.req-form .req-go {
+  border-radius: 14px;
+  box-shadow: 0 8px 18px -8px rgba(236, 72, 153, 0.8);
+}
+
+/* ---------- 我的歌卡 ---------- */
+.my-card {
+  position: relative;
+  margin: 0 0 10px;
+  padding: 11px 12px 10px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(236, 72, 153, 0.28);
+  border-left: 3px solid #ec4899;
+  background: linear-gradient(100deg, rgba(236, 72, 153, 0.18), rgba(139, 92, 246, 0.07));
+}
+.my-card-h {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: #f9a8d4;
+}
+.my-card-t {
+  display: block;
+  margin-top: 3px;
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.my-card-s {
+  display: block;
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.my-card-acts { margin-top: 8px; }
+.my-card-acts .req-candchip { margin-right: 8px; }
+
+/* ---------- 队列行：轻卡片 ---------- */
+.req-list { margin-top: 2px; }
+.req-list .req-item {
+  margin: 0 0 8px;
+  padding: 9px 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.04);
+  align-items: center;
+}
+.req-list .req-item.mine {
+  border-color: rgba(236, 72, 153, 0.30);
+  background: rgba(236, 72, 153, 0.07);
+}
+.req-item .req-no {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin-right: 9px;
+  border-radius: 50%;
+  background: rgba(139, 92, 246, 0.24);
+  color: #ddd6fe;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 22px;
+  text-align: center;
+}
+.req-item.mine .req-no { background: rgba(236, 72, 153, 0.30); color: #fce7f3; }
+.req-item .req-title { font-size: 14.5px; }
+.req-item .req-meta { font-size: 11.5px; color: var(--muted); }
+.req-item .req-st {
+  flex: none;
+  margin-left: 8px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text);
+}
+.req-item .req-st.st-play { background: rgba(236, 72, 153, 0.26); color: #fce7f3; }
+.req-item .req-st.st-miss { background: rgba(248, 113, 113, 0.20); color: #fecaca; }
+.req-item .req-st.st-search { background: rgba(139, 92, 246, 0.24); color: #ddd6fe; }
+.req-item .req-line2 .req-candchip { margin-left: 8px; }
+.req-item .req-x {
+  top: 50%;
+  right: 8px;
+  margin-top: -13px;
+  width: 26px;
+  height: 26px;
+}
+
+/* ---------- 我今天点过的 ---------- */
+.req-hist { margin: 8px 0 2px; }
+.req-hist > summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--muted);
+  padding: 6px 2px;
+  list-style: none;
+}
+.req-hist > summary::-webkit-details-marker { display: none; }
+.req-hist > summary::before { content: '▸ '; }
+.req-hist[open] > summary::before { content: '▾ '; }
+.hist-list { margin: 0; padding: 0; list-style: none; }
+.hist-item {
+  display: flex;
+  align-items: center;
+  padding: 7px 10px;
+  margin-bottom: 6px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.hist-item em {
+  flex: 1;
+  min-width: 0;
+  font-style: normal;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hist-item .hist-k { flex: none; margin: 0 8px; font-size: 11px; color: var(--muted); }
+.hist-item .hist-again {
+  flex: none;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+/* ---------- 分组标题：更轻 ---------- */
+.req-group {
+  margin: 12px 4px 7px;
+  font-size: 11px;
+  color: rgba(184, 173, 224, 0.75);
+  letter-spacing: 1px;
+}
+
+/* ---------- 空态：给一句话而不是空白 ---------- */
+.req-hint {
+  margin: 2px 2px 10px;
+  font-size: 12px;
+  color: var(--muted);
+}

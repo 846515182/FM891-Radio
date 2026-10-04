@@ -1,22 +1,3 @@
-# build outputs
-FM891.apk
-*.apk
-
-# signing key — never commit
-*.keystore
-*.jks
-
-# build intermediates
-android/assets/
-android/out/
-android/build/
-android/classes/
-android/gen/
-android/stage/
-*.class
-*.dex
-
-# logs / os
-*.log
-Thumbs.db
-.DS_Store
+# ignore visual-probe scaffolding (临时验收页，别进仓库)
+_probe.html
+_probe*.html

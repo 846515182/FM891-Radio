@@ -198,6 +198,7 @@
     function cancelRequest(it) {
       if (!it || it.del) return false;
       const title = String(it.title || '这首歌');
+      if (isOwnReq(it)) histNote(title, '已取消');
       tombstone(it);                      // del 墓碑 + ver 递增
       prog.delete(it.id);                 // 陈旧进度跟着撤，别再画找歌中
       delete picking[it.id];
@@ -303,7 +304,10 @@
     function visible() {
       const out = [];
       items.forEach((it) => { if (!it.del) out.push(it); });
-      out.sort((a, b) => b.ts - a.ts);
+      /* v1.21.14：改成**先点的在前**（升序）。原来 newest-first，导致
+         「你的歌第 1 位」其实是**最后**播的那首 —— 位次与真实播出顺序反了，
+         用户看着当然觉得「排队不一致」。云端台单 next 就是播出顺序，这里跟它对齐。 */
+      out.sort((a, b) => (a.ts || 0) - (b.ts || 0));
       return out;
     }
 
@@ -802,11 +806,18 @@
           // 「没找到」147 秒后还挂在列表上，正是这个坑。
           const mp = freshProg(it.id);
           if (mp && mp.stage !== 'miss') { it.missAt = 0; return; }   // 翻案：别撤
-          if (!it.missAt) { it.missAt = now; return; }       // 本次才看见：起表
+          if (!it.missAt) {
+            it.missAt = now;
+            if (isOwnReq(it)) histNote(it.title, '没找到');   // 留底，别无声消失
+            return;
+          }
           if (now - it.missAt > MISS_GRACE) changed = tombstone(it) || changed;
           return;
         }
-        if (cur && it.id !== cur && wallIds[it.id]) changed = tombstone(it) || changed;
+        if (cur && it.id !== cur && wallIds[it.id]) {
+          if (isOwnReq(it)) histNote(it.title, '播过了');     // 播过也要记账
+          changed = tombstone(it) || changed;
+        }
       });
       if (changed) { publish(); render(); }
       return changed;
@@ -977,6 +988,81 @@
     const reqList = $('reqList');
     const reqHint = $('reqHint');
 
+    /* ETA：云端台单 v1.21.14 起给每条带 eta（秒）—— 「大约还有 6 分钟」比
+     * 光一个「第 3 位」有用得多（用户原话：想知道什么时候轮到我）。 */
+    function airEtaOf(it) {
+      try {
+        if (!airState || !Array.isArray(airState.next)) return -1;
+        for (let k = 0; k < airState.next.length; k++) {
+          const e = airState.next[k];
+          if (e && e.id === it.id) return Number(e.eta) || 0;
+        }
+      } catch (_) { /* 忽略 */ }
+      return -1;
+    }
+
+    function fmtEta(sec) {
+      if (sec < 0) return '';
+      if (sec < 45) return '马上就到';
+      const m = Math.round(sec / 60);
+      return '大约还有 ' + (m <= 1 ? '1' : m) + ' 分钟';
+    }
+
+    /* ---------------- 我今天点过的（本地台账） ----------------
+     * 以前播过/没找到/已撤的单 20 秒后直接从列表消失，用户完全不知道自己点过
+     * 什么、结果如何 —— 现在留一份底，还能一键再点一次。 */
+    const HIST_KEY = 'fm891.myhist';
+    let myHist = [];
+    try {
+      const raw = localStorage.getItem(HIST_KEY);
+      if (raw) {
+        const a = JSON.parse(raw);
+        if (Array.isArray(a)) myHist = a.slice(0, 20);
+      }
+    } catch (_) { myHist = []; }
+
+    function histNote(title, how) {
+      const t = String(title || '').trim();
+      if (!t) return;
+      myHist.unshift({ t: t.slice(0, 30), k: how, at: Date.now() });
+      if (myHist.length > 20) myHist.length = 20;
+      try { localStorage.setItem(HIST_KEY, JSON.stringify(myHist)); } catch (_) { /* 忽略 */ }
+    }
+
+    function renderHist() {
+      const box = $('reqHist');
+      const ul = $('reqHistList');
+      if (!box || !ul) return;
+      box.hidden = !myHist.length;
+      if (!myHist.length) return;
+      ul.textContent = '';
+      myHist.slice(0, 8).forEach((h) => {
+        const li = document.createElement('li');
+        li.className = 'hist-item';
+        const em = document.createElement('em');
+        em.textContent = h.t;
+        const k = document.createElement('span');
+        k.className = 'hist-k';
+        k.textContent = h.k || '播过';
+        const again = document.createElement('button');
+        again.type = 'button';
+        again.className = 'hist-again';
+        again.textContent = '再点一次';
+        again.addEventListener('click', (ev) => { ev.stopPropagation(); retryOwn(h.t); });
+        li.appendChild(em);
+        li.appendChild(k);
+        li.appendChild(again);
+        ul.appendChild(li);
+      });
+    }
+
+    function retryOwn(title) {
+      const t = String(title || '').trim();
+      if (!t) return;
+      if (reqInput) reqInput.value = t;
+      addRequest(t);
+    }
+
     function stLabel(it, i) {
       // 云开播正放到这条 → 正在播（air 的 id 就是点播条目的 id）
       if (airState && airState.id === it.id) return { text: '正在播', cls: 'st-play' };
@@ -1018,7 +1104,9 @@
       line2.className = 'req-line2';
       const meta = document.createElement('small');
       meta.className = 'req-meta';
-      meta.textContent = it.who + (lab.text ? (' · ' + lab.text) : '');
+      /* 只写「谁点的」：状态由右侧胶囊负责，同一个信息不出现两遍
+         （v1.21.12 遗留：meta 与胶囊都写状态，一行里同一句话看两遍）。 */
+      meta.textContent = it.who;
       line2.appendChild(meta);
       body.appendChild(line2);
       li.appendChild(body);
@@ -1116,8 +1204,65 @@
         frag.appendChild(h);
         rows.forEach((pair) => { frag.appendChild(buildRow(pair[0], pair[1])); });
       };
-      putGroup('我的点歌', mineRows);
-      putGroup(mineRows.length ? '大家的点歌' : '全网点歌', otherRows);
+      /* ---- 我的歌卡（v1.21.14）：自己的单里最靠前的那首（也就是最快轮到的）
+         单独拎出来做大卡片，列表里不再重复它。 ---- */
+      const mineAll = list.filter((x) => isOwnReq(x));
+      const topMine = mineAll[0] || null;
+      const myCard = $('reqMyCard');
+      if (myCard) {
+        myCard.textContent = '';
+        if (!topMine) {
+          myCard.hidden = true;
+        } else {
+          myCard.hidden = false;
+          const pos = list.indexOf(topMine);
+          const lab = stLabel(topMine, pos);
+          const etaTxt = fmtEta(airEtaOf(topMine));
+          const head = document.createElement('div');
+          head.className = 'my-card-h';
+          head.textContent = '🎤 我的歌 · 第 ' + (pos + 1) + ' 位';
+          const nm = document.createElement('b');
+          nm.className = 'my-card-t';
+          nm.textContent = topMine.title;
+          const sub = document.createElement('small');
+          sub.className = 'my-card-s';
+          /* 副行只留「状态 + 预计时间」：位次已经在标题里了，
+             「第 2 位」在同一张卡上出现两遍就是废话。 */
+          const labTxt = /^第\s*\d+\s*位$/.test(lab.text) ? '' : lab.text;
+          /* 状态与 ETA 都空（已进台单、云端还没算预计时间）时也给一句人话，
+             别留一块空白让人以为这张卡没内容。 */
+          sub.textContent = [labTxt, etaTxt].filter(Boolean).join(' · ')
+            || '已进台单 · 等候播出';
+          const acts = document.createElement('div');
+          acts.className = 'my-card-acts';
+          if (topMine.cands && topMine.cands.length > 1 && !topMine.del) {
+            const cb = document.createElement('button');
+            cb.type = 'button';
+            cb.className = 'req-candchip' + (topMine.pick ? ' picked' : '');
+            cb.textContent = topMine.pick
+              ? ('已确认第 ' + topMine.pick + ' 版')
+              : ('选版本 · ' + topMine.cands.length + ' 版');
+            cb.addEventListener('click', (ev) => { ev.stopPropagation(); openCandModal(topMine); });
+            acts.appendChild(cb);
+          }
+          if (!topMine.del && !(airState && airState.id === topMine.id)) {
+            const xb = document.createElement('button');
+            xb.type = 'button';
+            xb.className = 'req-x';
+            xb.textContent = '✕';
+            xb.setAttribute('aria-label', '取消点歌');
+            xb.addEventListener('click', (ev) => { ev.stopPropagation(); cancelRequest(topMine); });
+            acts.appendChild(xb);
+          }
+          myCard.appendChild(head);
+          myCard.appendChild(nm);
+          myCard.appendChild(sub);
+          myCard.appendChild(acts);
+        }
+      }
+      const restMine = mineRows.filter((pair) => pair[0] !== topMine);
+      putGroup('我的其它点歌', restMine);
+      putGroup('大家在点', otherRows);
       // 整表重建先存滚动位置：不存的话，每次 MQTT/定时刷新都把列表甩回顶部，
       // 刚点完版本就「看着像没反应」。
       // v1.21.5：点歌台改成「单层滚动」—— 滚动容器从 reqList 上移到整个抽屉，
@@ -1131,18 +1276,21 @@
       reqList.scrollTop = _st;   // 还原（用户正在看的位置）
       if (_dlg) _dlg.scrollTop = _dST;
       renderSum(list);
+      renderHist();
       paintLive();
 
       if (reqHint) {
         const qn = list.filter((x) => x && x.st !== 'miss').length;   // 出结论的不算在队
         if (!list.length) {
           reqHint.textContent = synced
-            ? '还没有人点歌，抢个沙发'
+            ? '现在还没人点歌 · 电台放的是电台垫场，你点第一首'
             : '未连上点歌台，当前仅本机生效';
         } else if (synced) {
           reqHint.textContent = '全网同步 · ' + qn + ' 首在队';
         } else {
-          reqHint.textContent = '未连上点歌台，当前仅本机生效 · ' + qn + ' 首在队';
+          /* 离线时别再报一遍「N 首在队」：上面 reqSum 已经说了，
+             这里只讲连接状态（用户要判断的是「我的单发出去没有」）。 */
+          reqHint.textContent = '未连上点歌台，当前仅本机生效 · 你的点歌还没发出去';
         }
       }
     }
@@ -1491,10 +1639,15 @@
       const q = String(reqInput.value || '').trim();
       ac.innerHTML = '';
       if (!q || !catalog.length) { ac.hidden = true; return; }
+      /* v1.21.14：歌名、歌手都认 —— 用户脑子里记的是「周杰伦的晴天」，不是
+       * 只记得歌名；只匹配歌名会让他以为搜不出来。 */
       const hits = [];
+      const lq = q.toLowerCase();
       for (let k = 0; k < catalog.length && hits.length < 6; k++) {
         const c = catalog[k];
-        if (c.title !== q && c.title.indexOf(q) >= 0) hits.push(c);
+        const t = String(c.title || '');
+        const a = String(c.artist || '').toLowerCase();
+        if (t === q || t.indexOf(q) >= 0 || (a && a.indexOf(lq) >= 0)) hits.push(c);
       }
       if (!hits.length) { ac.hidden = true; return; }
       hits.forEach((c) => {

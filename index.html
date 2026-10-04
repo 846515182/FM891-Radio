@@ -145,7 +145,10 @@
         <label for="nickInput">我的昵称</label>
         <input id="nickInput" type="text" maxlength="16" placeholder="别人点歌时看到的名字" />
       </div>
-            <form class="req-form req-compose" id="reqForm" autocomplete="off">
+            <!-- v1.21.14：创作区收进一张卡（视觉主角），下面紧跟「我的歌」卡 ——
+           打开点歌台第一眼要看到的是「我的歌还要多久轮到」，不是一堆表单。 -->
+      <div class="compose-card">
+      <form class="req-form req-compose" id="reqForm" autocomplete="off">
         <!-- 输入 + 点歌同一行：这是整个面板唯一的主按钮（省掉一整行的高度） -->
         <div class="req-compose-row">
           <div class="ac-wrap">
@@ -172,9 +175,17 @@
           </div>
         </details>
       </form>
+      </div>
+      <!-- 我的歌：自己的 pending 单置顶，位次 + 预计时间 + 直接操作 -->
+      <div class="my-card" id="reqMyCard" hidden></div>
       <p class="req-sum" id="reqSum" hidden></p>
       <p class="req-hint" id="reqHint"></p>
       <ul class="req-list" id="reqList"></ul>
+      <!-- 我今天点过的：播过/没找到/已取消都留个底，可再点一次 -->
+      <details class="req-hist" id="reqHist" hidden>
+        <summary>我今天点过的</summary>
+        <ul class="hist-list" id="reqHistList"></ul>
+      </details>
       <div class="dialog-actions">
         <button class="ghost" id="reqClose" type="button">收起</button>
       </div>
