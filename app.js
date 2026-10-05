@@ -2278,7 +2278,7 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
 /* ---------------- 在线更新（GitHub Release） ---------------- */
 window.__toast = toast; // 供原生层回传提示（下载中 / 安装结果）
 
-const UPDATE_REPO = '846515182/FM891-Radio'; // 公开仓库，App 内免登录访问
+const UPDATE_REPO = '846515182/TimeRadio'; // 公开仓库，App 内免登录访问
 const UPDATE_API = 'https://api.github.com/repos/' + UPDATE_REPO + '/releases/latest';
 
 function parseVer(v) {
@@ -2300,7 +2300,7 @@ function currentVersion() {
       if (v) return v;
     }
   } catch (_) { /* 忽略 */ }
-  return '1.21.19'; // 网页版：与 manifest versionName 同步维护
+  return '1.21.20'; // 网页版：与 manifest versionName 同步维护
 }
 
 let updateUrl = '';

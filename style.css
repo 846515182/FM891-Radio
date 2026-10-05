@@ -2605,14 +2605,22 @@ body.track-change #cover {
   box-shadow: 0 10px 24px -14px rgba(236, 72, 153, 0.55);
 }
 .compose-card .req-form { margin: 0; }
-/* 嵌在卡里的输入框：自己不再画框，卡就是框 */
+/* 嵌在卡里的输入框：给一个胶囊形底色 + 细边，让用户一眼看出「这是输入框」
+   （v1.21.20：之前 border:0 + transparent，用户反馈「点歌输入框都没有」——
+    视觉上和卡片背景融成一片，只有 placeholder 文字飘着。） */
 .compose-card .req-form input {
-  border: 0;
-  background: transparent;
-  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  padding: 10px 14px;
   font-size: 15px;
+  color: var(--text);
 }
-.compose-card .req-form input:focus { outline: none; }
+.compose-card .req-form input:focus {
+  outline: none;
+  border-color: rgba(236, 72, 153, 0.6);
+  background: rgba(255, 255, 255, 0.1);
+}
 .req-form .req-go {
   border-radius: 14px;
   box-shadow: 0 8px 18px -8px rgba(236, 72, 153, 0.8);

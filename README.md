@@ -92,7 +92,7 @@ cd android
 
 ## GitHub 仓库与在线更新
 
-- 仓库（公开）：<https://github.com/846515182/FM891-Radio>
+- 仓库（公开）：<https://github.com/846515182/TimeRadio>
 - 版本发布在 **Releases**：tag 形如 `v1.4`，附件 `FM891.apk`。
 
 ### 在线更新怎么工作
