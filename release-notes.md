@@ -22,7 +22,28 @@
 - `README.md` 仓库链接同步更新
 - 本地 git remote 已切到新地址，旧地址 GitHub 会自动重定向
 
-## 四、全方位代码审查结论
+## 四、主播性格选择生效（关键 bug 修复）
+
+用户反馈「主播功能、播报、互动的都没生效」。根因：客户端点歌时把 `mood` 字段（用户选的报幕/闲聊/深夜）发给服务端，但 `handle_queue` 存入 items 时**没有保存 mood 字段**，导致 `mood_of()` 永远读不到用户选的性格，播报永远走时段自动。
+
+修复链路（5 处一起改）：
+- `handle_queue`：items 存入时加 `"mood"` 字段
+- `publish_ready`：mood 存进 `moods` 字典
+- `load_state` / `save_state`：moods 持久化（重启不丢）
+- `_rebuild_ann`：补报时 item 带 mood
+- 隧道换域名重发音源时：`ann_text()` 的 item 带 mood
+
+现在用户选「报幕/闲聊/深夜」，播报腔调会真的跟着变。
+
+## 五、死代码清理：移除 catalog 祝福字段
+
+客户端的「AI 写祝福」功能在 v1.21.12 已删（用户原话「加一句想说的有啥用」），但服务端 `write_catalog` 还在生成 `bless` 字段、`rewrite_catalog_loop` 每 20 分钟重摇祝福候选——这些数据客户端根本不读。
+
+- 移除 `write_catalog` 中的 `"bless": pick_bless(t)`
+- `rewrite_catalog_loop` 改为纯定时重写（反映仓库变化）
+- `pick_bless` / `dj_bless` 函数保留（测试可能引用），不再调用
+
+## 六、全方位代码审查结论
 
 对客户端（app.js / request.js / index.html / style.css / sw.js）和服务端 server.py 做了全量审查，覆盖点歌队列、搜索翻页、选版/换一批、取货转码、轮播排播、播放控制、错误恢复、所有权校验等核心链路。
 
