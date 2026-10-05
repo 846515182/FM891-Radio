@@ -125,6 +125,17 @@
     function isOwnReq(it) {
       return !!(it && (it.cid === myId || it.mine));
     }
+    /* v1.21.18：凡是要报「第几版」，一律报**用户看到的第几行**，不报服务器给的
+     * 编号。bot 那批的编号是 bot 那一页的按钮号，实测会跳号（1,2,3,4,5,6,7 里
+     * 缺 6），照编号报就出现「按钮写着 6 版、提示却说第 7 版」——用户原话「很乱」。
+     * 行号永远落在 1..总数 之内，跟列表对得上，也永远不可能超过总数。 */
+    function candPos(it, n) {
+      const cs = (it && it.cands) || [];
+      for (let i = 0; i < cs.length; i++) {
+        if (String(cs[i].n) === String(n)) return i + 1;
+      }
+      return String(n || '');
+    }
     function renderCandModal() {
       if (!candMask || !candList) return;
       const it = items.get(candFor);
@@ -135,9 +146,9 @@
       const cur = String(picking[it.id] || it.pick || '');
       if (candHint) {
         candHint.textContent = it.pick
-          ? ('已确认第 ' + it.pick + ' 版 · 正按这版下')
+          ? ('已确认第 ' + candPos(it, it.pick) + ' 版 · 正按这版下')
           : (cur
-            ? ('挑好了：第 ' + cur + ' 版 · 点「确认」下这一版')
+            ? ('挑好了：第 ' + candPos(it, cur) + ' 版 · 点「确认」下这一版')
             : '挑一个版本再点「确认」（没人替你选，不点就一直等你）');
       }
       candList.textContent = '';
@@ -484,6 +495,7 @@
           if (String(ci.candsSig || '') !== sig) {
             ci.cands = rec.cands;
             ci.candsSig = sig;
+            ci.moreWait = false;   // 新一批到了 → 「换一批」的等待结束，不用再提示
             /* 换了一轮**新**候选 → 上一轮的 pick 作废：bot 轮失败会落
              * YouTube 轮，两轮编号会撞车，拿着旧选择直接开新一轮是错的。
              * ver 必须涨，否则服务端手里那份旧 pick 会盖回来。 */
@@ -905,7 +917,7 @@
       delete picking[it.id];           // 已经发出去了，别再留着当「待确认」
       publish(true);
       render();
-      say('好，就下第 ' + num + ' 版');
+      say('好，就下第 ' + candPos(it, num) + ' 版');
     }
 
     function publish(force) {
@@ -1162,7 +1174,7 @@
           chip.type = 'button';
           chip.className = 'req-candchip' + (it.pick ? ' picked' : '');
           chip.textContent = it.pick
-            ? ('已确认第 ' + it.pick + ' 版')
+            ? ('已确认第 ' + candPos(it, it.pick) + ' 版')
             : ('选版本 · ' + it.cands.length + ' 版');
           chip.addEventListener('click', (ev) => {
             ev.stopPropagation();
@@ -1173,7 +1185,7 @@
           const w = document.createElement('span');
           w.className = 'req-waitpick';
           w.textContent = it.pick
-            ? ('TA 已确认第 ' + it.pick + ' 版')
+            ? ('TA 已确认第 ' + candPos(it, it.pick) + ' 版')
             : '等 TA 确认版本';
           line2.appendChild(w);
         }
@@ -1267,7 +1279,7 @@
             cb.type = 'button';
             cb.className = 'req-candchip' + (topMine.pick ? ' picked' : '');
             cb.textContent = topMine.pick
-              ? ('已确认第 ' + topMine.pick + ' 版')
+              ? ('已确认第 ' + candPos(topMine, topMine.pick) + ' 版')
               : ('选版本 · ' + topMine.cands.length + ' 版');
             cb.addEventListener('click', (ev) => { ev.stopPropagation(); openCandModal(topMine); });
             acts.appendChild(cb);
@@ -1476,15 +1488,27 @@
       if (!candMore.dataset.id || !client || !synced) return;
       candMore.disabled = true;
       candMore.textContent = '正在换…';
+      /* v1.21.18：记下「我在等新一批」。服务端实在搜不出别的版本时**不会**发
+         cands（宁可不发，也不把重复的或天气视频再摆一遍），按钮 8 秒后自己复位
+         —— 用户眼里就是「点了没反应」，正是他原话的「换版本也是一样不生效」。
+         到点还没等到新的一批，就明说一声，别让他干等。 */
+      const moreId = String(candMore.dataset.id);
+      const waitIt = items.get(moreId);
+      if (waitIt) waitIt.moreWait = true;
       try {
         client.publish(SEARCH_NS + '/' + myId, JSON.stringify({
-          op: 'more', id: candMore.dataset.id,
+          op: 'more', id: moreId,
         }), { qos: 0 });
         say('正在换一批版本…');
       } catch (_) { /* 忽略 */ }
       setTimeout(() => {
         candMore.disabled = false;
         candMore.textContent = '换一批版本';
+        const it2 = items.get(moreId);
+        if (it2 && it2.moreWait) {        // 到点了还没来新的一批
+          it2.moreWait = false;
+          if (String(candFor || '') === moreId) say('暂时没有别的版本了，就这些');
+        }
       }, 8000);
     });
     if (candOk) candOk.addEventListener('click', () => {
