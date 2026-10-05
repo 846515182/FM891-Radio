@@ -45,7 +45,11 @@
           <!-- 用 <img> 而不是 CSS background：实测这套 WebView 里
                file:// 的 background-image 不渲染（同一张图走 <img> 正常），
                而 background 方案一旦不画，封面就只剩一个空盒子。 -->
-          <img class="cover-img" id="coverImg" src="icons/dj-avatar.png" alt="主播" />
+          <!-- v1.21.19：首页大头像换成音乐波形。主播照片撤掉，
+               封面中央是一组随歌变色、播放时跳动的波形柱 —— 电台该有的样子。 -->
+          <div class="waveform" id="coverWave" aria-hidden="true">
+            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+          </div>
           <span class="status" id="status">正在接通直播…</span>
           <div class="cover-ring" aria-hidden="true"></div>
           <svg class="note" viewBox="0 0 24 24" aria-hidden="true">

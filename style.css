@@ -2845,3 +2845,88 @@ body.track-change #cover {
 }
 .cand-more:active { background: rgba(236, 72, 153, 0.22); }
 .cand-more:disabled { opacity: 0.5; }
+
+/* =====================================================================
+   v1.21.19：首页大头像 → 音乐波形
+   用户原话：「App首页中间那个大头像改为音乐波浪线」。
+   主播头像撤掉，封面中央换成一组随歌变色、播放时跳动的波形柱。
+   颜色读 --cover-hue（app.js 按歌名+歌手算的稳定色相），换歌时 .8s 化过去；
+   播放时（body.playing）每根柱子用不同延迟做上下跳动，静止时保持错落高度。
+   ===================================================================== */
+
+/* 封面背景：去掉 dj-avatar.png，改成深色底 + 随歌变色的径向光晕 */
+#cover {
+  background:
+    radial-gradient(120% 100% at 50% 120%, hsl(var(--cover-hue) 80% 30% / .55), transparent 60%),
+    radial-gradient(90% 80% at 50% 0%, hsl(calc(var(--cover-hue) + 40) 75% 28% / .4), transparent 55%),
+    #0c0820 !important;
+}
+
+/* 头像 img 已从 HTML 移除，这里保险地把旧规则作废 */
+#cover .cover-img { display: none !important; }
+
+/* 波形容器：居中、横向排列、底部对齐 */
+#cover .waveform {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  width: 72%;
+  height: 58%;
+}
+
+/* 单根柱子：圆角、随歌变色的渐变（下深上亮） */
+#cover .waveform i {
+  display: block;
+  width: 7px;
+  margin: 0 2.5px;            /* WebView 不认 flex gap，用 margin 兜底 */
+  border-radius: 4px;
+  background: linear-gradient(180deg,
+    hsl(var(--cover-hue) 95% 78%),
+    hsl(var(--cover-hue) 90% 60%) 55%,
+    hsl(calc(var(--cover-hue) - 20) 85% 48%));
+  box-shadow: 0 0 8px hsl(var(--cover-hue) 90% 60% / .55);
+  transition: background .8s var(--ease), box-shadow .8s var(--ease);
+}
+
+/* 11 根柱子的静止错落高度：中间高、两边低，像一座山峰 */
+#cover .waveform i:nth-child(1)  { height: 22%; }
+#cover .waveform i:nth-child(2)  { height: 38%; }
+#cover .waveform i:nth-child(3)  { height: 56%; }
+#cover .waveform i:nth-child(4)  { height: 72%; }
+#cover .waveform i:nth-child(5)  { height: 88%; }
+#cover .waveform i:nth-child(6)  { height: 100%; }
+#cover .waveform i:nth-child(7)  { height: 86%; }
+#cover .waveform i:nth-child(8)  { height: 68%; }
+#cover .waveform i:nth-child(9)  { height: 50%; }
+#cover .waveform i:nth-child(10) { height: 34%; }
+#cover .waveform i:nth-child(11) { height: 20%; }
+
+/* 播放时每根柱子跳动：不同延迟 + 不同振幅，看起来像真实声波 */
+body.playing #cover .waveform i {
+  animation: waveBar 1.1s ease-in-out infinite;
+}
+body.playing #cover .waveform i:nth-child(1)  { animation-delay: 0s;    animation-duration: 1.0s; }
+body.playing #cover .waveform i:nth-child(2)  { animation-delay: 0.12s; animation-duration: 1.3s; }
+body.playing #cover .waveform i:nth-child(3)  { animation-delay: 0.24s; animation-duration: 0.9s; }
+body.playing #cover .waveform i:nth-child(4)  { animation-delay: 0.08s; animation-duration: 1.2s; }
+body.playing #cover .waveform i:nth-child(5)  { animation-delay: 0.36s; animation-duration: 1.1s; }
+body.playing #cover .waveform i:nth-child(6)  { animation-delay: 0.18s; animation-duration: 1.4s; }
+body.playing #cover .waveform i:nth-child(7)  { animation-delay: 0.04s; animation-duration: 1.0s; }
+body.playing #cover .waveform i:nth-child(8)  { animation-delay: 0.30s; animation-duration: 1.2s; }
+body.playing #cover .waveform i:nth-child(9)  { animation-delay: 0.14s; animation-duration: 0.95s; }
+body.playing #cover .waveform i:nth-child(10) { animation-delay: 0.26s; animation-duration: 1.15s; }
+body.playing #cover .waveform i:nth-child(11) { animation-delay: 0.10s; animation-duration: 1.25s; }
+
+/* 跳动：在自身高度的 35%~100% 之间往复（不用 transform scaleY 是因为
+   scaleY 会让圆角也被拉伸变形；改 height 更干净，且底部对齐不动）。 */
+@keyframes waveBar {
+  0%, 100% { height: 35%; }
+  50%      { height: 100%; }
+}
+
+/* 减少动效偏好：柱子不跳，保持错落静止高度 */
+@media (prefers-reduced-motion: reduce) {
+  body.playing #cover .waveform i { animation: none; }
+}
