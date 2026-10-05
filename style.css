@@ -535,12 +535,18 @@ footer {
   background: linear-gradient(180deg, #241a4f 0%, #150e31 62%);
   padding: 4px 16px calc(12px + env(safe-area-inset-bottom));
   box-shadow: 0 -18px 46px rgba(0, 0, 0, 0.5), 0 -1px 0 rgba(167, 139, 250, 0.35);
+  /* v1.21.16：入场动画**只动 transform**，不再动 opacity。
+     原来 from{opacity:.4} + fill-mode:both，在 prefers-reduced-motion 下
+     （本项目有 * { animation:none !important }）动画被彻底关掉，元素就永远
+     停在 0.4 —— 整个点歌台半透明，主页内容全透进来（用户原话「点歌流程都溢出来了」）。
+     不透明度必须是**基础样式**，不能挂在动画上。 */
+  opacity: 1;
   animation: sheetUp 0.22s cubic-bezier(0.22, 0.9, 0.3, 1) both;
 }
 
 @keyframes sheetUp {
-  from { transform: translateY(14%); opacity: 0.4; }
-  to { transform: translateY(0); opacity: 1; }
+  from { transform: translateY(14%); }
+  to { transform: translateY(0); }
 }
 
 /* 抓手：告诉用户这玩意儿能往下拖走 */
@@ -660,6 +666,10 @@ footer {
 
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
+  /* v1.21.16：动画被关掉时，把「本来靠动画收尾」的样式显式归位。
+     .dialog 的入场动画带 fill-mode:both，不显式归位就会停在 from 的状态上
+     （transform: translateY(14%)，且历史上还有 opacity:.4 = 整块半透明）。 */
+  .dialog { transform: none; opacity: 1; }
 }
 
 /* ==================== 在线点歌（阶段 1） ==================== */
@@ -2758,21 +2768,18 @@ body.track-change #cover {
    现在列表与页脚包在 .ac-panel 里，页脚常驻在列表下方（不随列表滚动），
    点歌台 WebView 低于 Chrome 84（gap/inset 无效），一律用 margin。 */
 .ac-panel {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: calc(100% + 4px);
-  z-index: 6;
+  /* v1.21.16：正常流内，不再 absolute 溢出盖住下面的内容 */
+  position: static;
+  margin: 8px 0 2px;
   padding: 6px;
-  background: #161031;
+  background: rgba(22, 16, 49, 0.92);
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 12px;
-  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.5);
 }
 .ac-panel[hidden] { display: none; }
 .ac-panel .ac-list {
   position: static;
-  max-height: 208px;
+  max-height: 168px;
   margin: 0;
   padding: 0;
   background: transparent;
@@ -2812,6 +2819,8 @@ body.track-change #cover {
 }
 .ac-panel .ac-cloud {
   margin-left: 8px;
+  min-width: 76px;
+  white-space: nowrap;
   border-color: rgba(236, 72, 153, 0.4);
   color: #f9a8d4;
 }

@@ -1788,10 +1788,12 @@
       next.disabled = !multi || acSt.page >= acSt.pages;
       page.textContent = multi ? (acSt.page + '/' + acSt.pages)
         : (acSt.src === 'yt' ? (acSt.pageItems.length + ' 首') : (acSt.hits.length + ' 首'));
+      /* 文案别再拼书名号：浏览曲库时输入框是空的，拼出来是「云端搜《》」，
+         窄按钮里直接被压成「云端搜 0」（截图实锤）。 */
       const isCloud = acSt.src === 'yt';
-      cloud.textContent = acSt.loading ? '搜索中…'
-        : (isCloud ? '重新搜云端' : '云端搜《' + String(reqInput.value || '').trim() + '》');
-      cloud.disabled = !!acSt.loading || !String(reqInput.value || '').trim();
+      cloud.textContent = acSt.loading ? '搜索中…' : (isCloud ? '重新搜云端' : '云端搜');
+      /* 也别再按输入框是否为空禁用 —— 浏览曲库时正是想「拿当前列表去云端搜一遍」。 */
+      cloud.disabled = !!acSt.loading;
     }
 
     function acGo(delta) {

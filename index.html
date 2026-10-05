@@ -153,19 +153,21 @@
         <div class="req-compose-row">
           <div class="ac-wrap">
             <input id="reqInput" type="text" placeholder="想听哪首歌？主播全网找" maxlength="30" />
-            <!-- v1.21.15：联想面板 = 列表 + 页脚。页脚是「能翻页」的载体 ——
-                 以前只有前 6 条，用户原话「只能看到一页，必须联动（bot 能翻页）」。 -->
-            <div class="ac-panel" id="acPanel" hidden>
-              <ul class="ac-list" id="reqAc"></ul>
-              <div class="ac-foot">
-                <button type="button" class="ac-pg" id="acPrev">上一页</button>
-                <span class="ac-pg-n" id="acPage">1/1</span>
-                <button type="button" class="ac-pg" id="acNext">下一页</button>
-                <button type="button" class="ac-cloud" id="acCloud">云端搜</button>
-              </div>
-            </div>
           </div>
           <button class="primary req-go" id="reqGo" type="submit">点歌</button>
+        </div>
+        <!-- v1.21.16：联想面板改成**正常流内**（原来 absolute，从创作卡里溢出去
+             盖住了 chips、我的歌卡和提示行 —— 用户原话「点歌流程都溢出来了」）。
+             现在它是上面那一行的下一个兄弟：打开时把下面的内容正常推下去，
+             抽屉本来就纵向滚动，什么都不会被盖住、也不会凭空消失一块。 -->
+        <div class="ac-panel" id="acPanel" hidden>
+          <ul class="ac-list" id="reqAc"></ul>
+          <div class="ac-foot">
+            <button type="button" class="ac-pg" id="acPrev">上一页</button>
+            <span class="ac-pg-n" id="acPage">1/1</span>
+            <button type="button" class="ac-pg" id="acNext">下一页</button>
+            <button type="button" class="ac-cloud" id="acCloud">云端搜</button>
+          </div>
         </div>
         <!-- 曲库常听：横向一排 -->
         <div class="req-chips" id="reqChips" hidden></div>
