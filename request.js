@@ -45,7 +45,10 @@
     const SNAP_EVERY = 30000;    // 周期性重发快照：晚加入的人靠 retain 一次拿全
     const GC_TOMB = 20 * 60000;  // 墓碑保留 20 分钟（够慢速的对端收到）
     const MAX_ITEMS = 40;        // 队列上限，超出淘汰最老的
-    const MIN_GAP = 3000;        // 本地点歌冷却，防手抖连点
+    /* 本地点歌冷却：只挡手抖双击，不挡「连点两首」。
+       v1.21.17 从 3000 降到 1000 —— 选中即点歌之后，从曲库连挑两首是主路径，
+       3 秒必被「点太快啦」拒一次，观感就是点歌失败（同名重复另有 dup 兜着）。 */
+    const MIN_GAP = 1000;
     /* 「歌已备好」的音源广播：阶段 2 的 worker 找到并下好歌后往这里发 retain。
      * 阶段 1 没有 worker，这条路径是**空的** —— 存在它不会改变现在的任何行为。 */
     const READY_NS = 'fm891-radio/r';
@@ -219,12 +222,16 @@
     const djText = $('djText');
     let sayQueue = [];
     let sayTimer = null;
+    /* 最近一条播报文本。只为了测试能断言「离线时到底说了什么」—— 打字机要
+     * 按 45ms/字逐字上屏，等它敲完再读既慢又会被上一条的排队节奏带偏。 */
+    let lastSay = '';
 
     /* 打字机：逐字上屏，带 3.5 秒后自动轮到下一条。多条播报排队出，避免
      * 「点了三首歌只看见最后一条」。 */
     function say(text) {
       if (!text) return;
-      sayQueue.push(String(text));
+      lastSay = String(text);
+      sayQueue.push(lastSay);
       if (!sayTimer) nextSay();
     }
     function nextSay() {
@@ -367,14 +374,20 @@
       if (!t) { R.toast('先输入歌名'); return false; }
       const now = Date.now();
       if (now - lastAddAt < MIN_GAP) { R.toast('点太快啦，缓一缓～'); return false; }
-      lastAddAt = now;
 
-      // 同一首还在队列里就别重复点（不同人点同一首 = 跟唱，允许）
+      /* 同一首还在队列里就别重复点（不同人点同一首 = 跟唱，允许）。
+         v1.21.17：**没找到的不算「你点过」** —— 上次云端没搜到，换个写法再试
+         一次是正常动作，挡回去只会让人觉得「点歌一直失败」。 */
       let dup = false;
       items.forEach((it) => {
-        if (!it.del && it.mine && norm(it.title) === norm(t)) dup = true;
+        if (!it.del && it.mine && it.st !== 'miss'
+            && norm(it.title) === norm(t)) dup = true;
       });
       if (dup) { R.toast('你已经点过《' + t + '》啦'); return false; }
+      /* 冷却只在**真入队**时消耗。以前这行紧跟在冷却判定后面、排在重复判定
+         之前：被「点过啦」拒一次就把冷却吃掉，换首歌再点又吃「点太快啦」——
+         一连两次拒绝，用户看到的就是「点歌怎么老失败」。 */
+      lastAddAt = now;
 
       /* 主播性格：你在点歌台里选的那个，跟着这一单发到云端。选「自动」就空着，
          服务器按时段挑（见 server.py 的 mood_of）。 */
@@ -403,7 +416,13 @@
       render();
       // 电台台单已下架：找歌全部交给云端主程序（先查仓库，没有再电报下载）。
       // 客户端不再自己扫台 —— 进度与结果都从 p/* 和 r/* 频道来。
-      say('收到 ' + it.who + ' 点的《' + t + '》，云端主播马上安排 🎵');
+      /* 连没连上必须说实话：离线时 publish() 走 `if (!client || !myTopic) return`
+         静默不出去，单子只在本机。以前这里一律发「云端主播马上安排 🎵」是**假
+         承诺** —— 输入框清了、气泡说马上安排，单子却永远停在找歌中，用户看到
+         的就是「点歌失败」。连上后 publish(true) 会把本机这份补发出去。 */
+      say(synced
+        ? ('收到 ' + it.who + ' 点的《' + t + '》，云端主播马上安排 🎵')
+        : ('《' + t + '》先记在本机 · 连上点歌台自动补发'));
       return true;   // 真的入队了，调用方才可以清空输入框
     }
 
@@ -1298,7 +1317,7 @@
         } else {
           /* 离线时别再报一遍「N 首在队」：上面 reqSum 已经说了，
              这里只讲连接状态（用户要判断的是「我的单发出去没有」）。 */
-          reqHint.textContent = '未连上点歌台，当前仅本机生效 · 你的点歌还没发出去';
+          reqHint.textContent = '未连上点歌台 · 连上后自动补发你的点歌';
         }
       }
     }
@@ -1399,8 +1418,12 @@
       /* 打开就摊开服务器曲库（输入框空着时），用户能自己核对「服务器上都有啥」 */
       setTimeout(() => {
         try {
-          reqInput && reqInput.focus();
-          if (reqInput && !String(reqInput.value || '').trim()) showLibrary();
+          /* 空输入时**不抢焦点**：一抢就把软键盘顶起来，正好盖住下面刚摊开的
+             曲库（打开抽屉通常就是为了翻库挑歌）。有字才聚焦 —— 那是接着改
+             上次没发出去的歌名。选中即点歌之后也不再依赖键盘够得着「点歌」。 */
+          const hasText = !!(reqInput && String(reqInput.value || '').trim());
+          if (hasText) reqInput.focus();
+          if (reqInput && !hasText) showLibrary();
         } catch (_) { /* 忽略 */ }
       }, 60);
     }
@@ -1654,10 +1677,7 @@
         b.type = 'button';
         b.className = 'chip';
         b.textContent = c.title;
-        b.addEventListener('click', () => {
-          if (reqInput) { reqInput.value = c.title; reqInput.focus(); }
-          hideAc();
-        });
+        b.addEventListener('click', () => pickSong(c.title));
         box.appendChild(b);
       });
       box.hidden = false;
@@ -1670,6 +1690,23 @@
       if (ac) ac.textContent = '';
       if (panel) panel.hidden = true;
       clearTimeout(acAutoTimer);
+    }
+
+    /* v1.21.17：点联想项 / 曲库行 / 速点 chip = **一步点歌**。
+       原来三处都只把歌名填进输入框再 focus()，于是「点了没反应」，还得再按
+       一次「点歌」；focus() 在手机上还会把软键盘顶起来，正好挡住那个按钮 ——
+       用户要先关键盘再找按钮，流程当然乱七八糟。歌名本来就是完整的一首、意图
+       明确，选中即提交；点错了撤单即可。不 blur：blur 会挂一条 160ms 后的
+       hideAc，紧接着重摊曲库会被它一把收掉。 */
+    function pickSong(title) {
+      const t = String(title || '').trim();
+      if (!t) return;
+      if (reqInput) reqInput.value = t;
+      hideAc();
+      if (addRequest(t)) {
+        if (reqInput) reqInput.value = '';
+        showLibrary();   // 还想接着点？曲库重新摊开，一首接一首
+      }
     }
     /* ---------------- 搜索分页（v1.21.15）----------------
      * 本地曲库命中 → 本地切页（毫秒级）；库外 → 问服务器（yt-dlp，带缓存）。
@@ -1767,10 +1804,7 @@
           sp.textContent = c.a;
           li.appendChild(sp);
         }
-        li.addEventListener('click', () => {
-          if (reqInput) { reqInput.value = c.t; reqInput.focus(); }
-          hideAc();
-        });
+        li.addEventListener('click', () => pickSong(c.t));
         ul.appendChild(li);
       });
       panel.hidden = false;
@@ -1858,7 +1892,14 @@
       if (next) next.addEventListener('click', () => acGo(1));
       if (cloud) cloud.addEventListener('click', () => {
         const q = String(reqInput && reqInput.value || '').trim();
-        if (!q) return;
+        if (!q) {
+          /* v1.21.16 把这颗按钮从「按空输入禁用」改成可点（浏览曲库时正是想拿
+             当前列表去云端搜一遍），却没给空输入的行为 —— 点了没反应，比禁用
+             还让人困惑。不许再一声不吭，如实说缺什么。 */
+          try { R.toast('先输入歌名，我才知道要全网找什么'); }
+          catch (_) { /* 忽略 */ }
+          return;
+        }
         acSt.page = 1;
         searchAsk(q, 1);
       });
@@ -1913,6 +1954,9 @@
       closeCandModal: closeCandModal, maybeOpenCand: maybeOpenCand,
       /* 播报闸门要看队列长度才能验（第一条会被立刻取走开始打字，长度变 0） */
       sayQueueLen: () => sayQueue.length,
+      /* 最近一条播报的原文：离线时**不许**再说「云端主播马上安排」这种
+       * 承诺（单子当时根本没发出去），测试要能直接读到这句。 */
+      lastSay: () => lastSay,
       /* 曲库链路：联想/AI 祝福/速点的数据与行为 */
       catalog: () => catalog, ensureCatalog: ensureCatalog, 
       showAc: showAc, hideAc: hideAc,
