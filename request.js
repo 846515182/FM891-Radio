@@ -496,6 +496,7 @@
             ci.cands = rec.cands;
             ci.candsSig = sig;
             ci.moreWait = false;   // 新一批到了 → 「换一批」的等待结束，不用再提示
+            candMoreUnlock();     // 列表已经换新了，按钮就别再锁着
             /* 换了一轮**新**候选 → 上一轮的 pick 作废：bot 轮失败会落
              * YouTube 轮，两轮编号会撞车，拿着旧选择直接开新一轮是错的。
              * ver 必须涨，否则服务端手里那份旧 pick 会盖回来。 */
@@ -1496,6 +1497,15 @@
     /* v1.21.15：版本不对就换一批 —— 服务器重新搜更深的候选、去掉已给过的那些，
        重发候选列表（走原有 cands 进度通道，弹窗照旧刷新）。 */
     const candMore = $('candMore');
+    /* 换一批按钮的复位。**新一批到了就解锁**，不要死等 8 秒 ——
+       实测（真浏览器 + 真服务器）新批次 3 秒就到，而按钮还要再锁 5 秒，
+       用户看到的是「列表已经换了、按钮还写着『正在换…』而且点不动」，
+       跟卡死了一模一样（用户原话「很乱」）。 */
+    function candMoreUnlock() {
+      if (!candMore) return;
+      candMore.disabled = false;
+      candMore.textContent = '换一批版本';
+    }
     if (candMore) candMore.addEventListener('click', () => {
       if (!candMore.dataset.id || !client || !synced) return;
       candMore.disabled = true;
@@ -1514,8 +1524,7 @@
         say('正在换一批版本…');
       } catch (_) { /* 忽略 */ }
       setTimeout(() => {
-        candMore.disabled = false;
-        candMore.textContent = '换一批版本';
+      candMoreUnlock();
         const it2 = items.get(moreId);
         if (it2 && it2.moreWait) {        // 到点了还没来新的一批
           it2.moreWait = false;
