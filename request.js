@@ -1699,7 +1699,7 @@
           if (lp && catalog.length) lp.hidden = false;
           renderChips();
         })
-        .catch(() => { /* 拉不到曲库：联想/速点降级，点歌本身不受影响 */ });
+        .catch(() => { acSt.libFailed = true; /* 拉不到曲库：以前纯静默，用户只看到「点歌台是空的」，不知道是没加载还是本来就没歌。记下来，空态时如实说。 */ });
     }
 
     /* 曲库速点 chips：打开点歌台一眼看到库里有什么，点一下直接填 */
@@ -1822,7 +1822,10 @@
         li.className = 'ac-src';
         li.textContent = acSt.src === 'yt'
           ? '云端也没搜到《' + q + '》，换个写法或只写歌名试试'
-          : '本地曲库没有《' + q + '》· 点「云端搜」全网找';
+          : (q ? '本地曲库没有《' + q + '》· 点「云端搜」全网找'
+             : (acSt.libFailed
+                 ? '曲库暂时拉不到（服务器没连上）· 直接写歌名，点「云端搜」全网找'
+                 : '正在拉服务器曲库…先写歌名也行，点「云端搜」全网找'));
         ul.appendChild(li);
         panel.hidden = false;
         paintAcFoot();
@@ -1882,7 +1885,17 @@
        审查发现的缺口：以前必须先打字才出列表，「服务器上有的歌都还在」这件事
        用户没法自己核对 —— 现在打开点歌台就能一页页翻，点哪首点哪首。 */
     function showLibrary() {
-      if (!catalog.length) { hideAc(); return; }
+/* 曲库还没拉到时**不要静默把面板藏掉**。这里原来是 hideAc() 直接返回，
+         输入框下面什么都没有 —— 打开点歌台看到的就是一个空壳，
+         既不知道「服务器上有哪些歌」，也不知道「是还没加载」。
+         改成照常渲染，让空态分支去说人话。 */
+        if (!catalog.length) {
+          acSt.q = ''; acSt.src = 'lib'; acSt.rid = '';
+          acSt.loading = false; acSt.hits = [];
+          acSt.pages = 1; acSt.pageItems = [];
+          renderAc();
+          return;
+        }
       const hits = catalog.map((c) => ({
         t: String(c.title || ''), a: String(c.artist || ''), d: c.dur || 0,
       }));

@@ -518,8 +518,15 @@ footer {
   bottom: 0;
   left: 0;
   z-index: 60;
-  /* 淡很多：以前 0.72 + blur(4px) 把整台糊掉，看着就是「被关起来了」 */
-  background: rgba(5, 3, 14, 0.42);
+  /* 淡很多：以前 0.72 + blur(4px) 把整台糊掉，看着就是「被关起来了」。
+     但**均匀**的遮罩会出另一个问题：抽屉上沿正好把首页队列的一行切成两半，
+     那一行既没被压暗也没被盖住，看着像「被裁掉了」（用户原话「点歌台很乱」）。
+     改成**上浅下深的竖向渐变**：越靠近抽屉越暗，那半行自然退到后面去，
+     读起来就是「弹层盖在上面」而不是「被切了一刀」。 */
+  background: linear-gradient(180deg,
+    rgba(5, 3, 14, 0.26) 0%,
+    rgba(5, 3, 14, 0.44) 45%,
+    rgba(5, 3, 14, 0.62) 100%);
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -543,7 +550,9 @@ footer {
   border-top: 1px solid rgba(255, 255, 255, 0.14);
   background: linear-gradient(180deg, #241a4f 0%, #150e31 62%);
   padding: 4px 16px calc(12px + env(safe-area-inset-bottom));
-  box-shadow: 0 -18px 46px rgba(0, 0, 0, 0.5), 0 -1px 0 rgba(167, 139, 250, 0.35);
+  /* 上沿再加一道更实的边 + 往上渐隐的投影：让「弹层压在页面上」这件事
+     不用靠猜。原来越往上越透明，越像半路断掉。 */
+  box-shadow: 0 -22px 52px rgba(0, 0, 0, 0.62), 0 -1px 0 rgba(167, 139, 250, 0.45);
   /* v1.21.16：入场动画**只动 transform**，不再动 opacity。
      原来 from{opacity:.4} + fill-mode:both，在 prefers-reduced-motion 下
      （本项目有 * { animation:none !important }）动画被彻底关掉，元素就永远
@@ -2529,12 +2538,12 @@ body.track-change #cover {
 /* 按钮侧必须用 `.req-form .req-go`（0,2,0）才压得住 `.req-form button{width:100%}` */
 .req-form .req-go {
   flex: none;
-  width: 104px;
+  width: 88px;
   margin-left: 8px;
-  padding: 11px 8px;
+  padding: 11px 6px;
   border-radius: 12px;
-  font-size: 15px;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 700;
 }
 
 /* —— 分组标题 —— */
@@ -2623,7 +2632,7 @@ body.track-change #cover {
 }
 .req-form .req-go {
   border-radius: 14px;
-  box-shadow: 0 8px 18px -8px rgba(236, 72, 153, 0.8);
+  box-shadow: 0 5px 12px -7px rgba(236, 72, 153, 0.55);
 }
 
 /* ---------- 我的歌卡 ---------- */
