@@ -28,6 +28,15 @@ html, body { margin: 0; padding: 0; }
 ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.16); border-radius: 99px; }
 ::-webkit-scrollbar-track { background: transparent; }
 
+html {
+  /* Android WebView 的「文字自动缩放」会按屏幕宽度/用户字号把文字放大，
+     而这套布局是按固定 px 排的 —— 一放大就把点歌台的输入框和「点歌」按钮
+     挤变形甚至挤出屏幕（用户原话「点歌台很乱」「输入框都没有」）。
+     -webkit-text-size-adjust 是 WebView 认的那个前缀，两个都写上。 */
+  -webkit-text-size-adjust: none;
+  text-size-adjust: none;
+}
+
 body {
   background: var(--bg);
   color: var(--text);
