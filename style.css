@@ -2420,16 +2420,7 @@ body.track-change #cover {
   box-shadow: 0 -12px 18px -12px rgba(0, 0, 0, 0.9);
 }
 
-/* 封面图本体：铺满圆形盒子。走 <img> 不走 background（原因见 index.html 注释）。 */
-#cover .cover-img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  border-radius: 50%;
-  /* 与父盒的 border-radius 一致，避免圆角外溢出方角 */
-  pointer-events: none;
-}
+
 
 /* ============ v1.21.7 · flex `gap` 在这台 WebView 不生效的兜底 ============
    CDP 运行时实验证明：computed 显示 columnGap=9px/8px，但子元素实际间距
@@ -2870,8 +2861,7 @@ body.track-change #cover {
     #0c0820 !important;
 }
 
-/* 头像 img 已从 HTML 移除，这里保险地把旧规则作废 */
-#cover .cover-img { display: none !important; }
+
 
 /* 波形容器：居中、横向排列、底部对齐 */
 #cover .waveform {

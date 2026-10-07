@@ -931,6 +931,7 @@ function safeSet(key, value) {
 /* ---------------- 基础元素 ---------------- */
 const $ = (id) => (typeof document !== 'undefined' && document ? document.getElementById(id) : null);
 const audio = $('audio');
+const bgmEl = $('bgm');
 const playBtn = $('playBtn');
 const statusEl = $('status');
 const stationNameEl = $('stationName');
@@ -990,6 +991,98 @@ let streamTunnel = '';                // 隧道备用地址，从 air.url 的 or
 let streamFailover = 0;               // 自上次成功以来连着失败了几次（playing 时归零）
 let streamLastGoodTunnel = false;     // 上次**成功出声**走的是哪条线（决定重连先试哪条）
 let streamAttemptTunnel = false;      // 本次 liveUrl() 选中的线路，成功后回写成 lastGood
+
+/* ---------------- 垫乐兜底（**不是**「App 常驻背景音乐」） ----------------
+ * 先把定位说死，免得下次又写成常驻 BGM：只有**用户想听、而直播此刻没出声**时才播，
+ * 直播一出声立刻淡到静音。用户主动暂停 → 一点声音都没有。
+ *
+ * v1.21.21 修三个真 bug（上一版「背景音乐根本没生效」就栽在这）：
+ *   ① bgmFadeOut() 定义了但**从没被调用** → 垫乐会一直压在直播上（混音）；
+ *   ② 淡入挂在 'canplay' 上，不管直播有没有声，源一就绪就淡入；
+ *   ③ 'canplay' 只在真正开始加载后才来，而 preload="none" 没人调 play() 就永远不来
+ *      → bgmReady 永远是 false → bgmFadeIn() 直接 return，垫乐**一次都不会响**。
+ *      加上 Android WebView 的自动播放策略会拒掉无手势的 play()，原代码
+ *      `.catch(() => {})` 又把失败吞了 —— 用户侧就是「点了没反应，也没提示」。
+ * 现在统一走一个决策函数 bgmSync()，别处不再单独判断。
+ * 两个 audio 元素互不干扰：直播走 #audio，垫乐走 #bgm。 */
+const BGM_URL = STREAM_DIRECT.replace('/stream', '/bgm');
+const BGM_MAX_VOL = 0.30;             // 兜底音量：宁小勿抢，别盖过主播
+let bgmFadeTimer = null;
+let bgmWaitTimer = null;
+let bgmWanted = false;                // 现在要不要垫乐
+let bgmBlocked = false;               // 被自动播放策略拦过，等一次用户手势
+let bgmDead = false;                  // 源取不到就放弃，别每次断线都刷请求
+
+function bgmFadeTo(target, steps = 10, delay = 45) {
+  if (!bgmEl) return;
+  clearTimeout(bgmFadeTimer);
+  const start = bgmEl.volume;
+  const delta = (target - start) / steps;
+  let i = 0;
+  const tick = () => {
+    i += 1;
+    const v = Math.max(0, Math.min(1, start + delta * i));
+    bgmEl.volume = v;
+    if (i < steps) {
+      bgmFadeTimer = setTimeout(tick, delay);
+    } else if (v <= 0.001) {
+      try { bgmEl.pause(); } catch (_) { /* 忽略 */ }
+    }
+  };
+  tick();
+}
+
+function bgmStreamLive() {
+  return !audio.paused && !audio.ended && audio.readyState >= 2;
+}
+
+/* 唯一的决策点。注意：这里读 shouldPlay，所以**只能在模块初始化之后**被调用
+ * （事件回调 / 播放按钮路径），不能在顶层执行 —— shouldPlay 是后面才 let 声明的。 */
+function bgmSync() {
+  if (!bgmEl || bgmDead) return;
+  if (!(bgmWanted && !bgmStreamLive())) {
+    clearTimeout(bgmWaitTimer);        // 直播回来了 / 用户不想听了 → 立刻撤
+    bgmWaitTimer = null;
+    bgmFadeTo(0);
+    return;
+  }
+  /* 该有声却没声。**先等 1.5s 再上垫乐**：切源和重连也要经过「暂停」这一瞬，
+     不留这道延迟，每次换线都会「咔」一下冒出半秒垫乐，比没有还难受。 */
+  if (bgmWaitTimer) return;
+  bgmWaitTimer = setTimeout(() => {
+    bgmWaitTimer = null;
+    if (!bgmWanted || bgmDead || bgmStreamLive()) return;
+    if (bgmEl.paused) {
+      try {
+        const p = bgmEl.play();
+        if (p && typeof p.catch === 'function') p.catch(() => { bgmBlocked = true; });
+      } catch (_) { bgmBlocked = true; }
+    }
+    bgmFadeTo(BGM_MAX_VOL);
+  }, 1500);
+}
+
+/* 播放意图变了（用户点了播放 / 暂停）时调这个；直播侧的事件在各自回调里调 bgmSync() */
+function bgmWant(on) {
+  bgmWanted = !!on;
+  bgmSync();
+}
+
+if (bgmEl) {
+  bgmEl.volume = 0;
+  bgmEl.preload = 'auto';
+  bgmEl.src = BGM_URL;
+  bgmEl.addEventListener('error', () => { bgmDead = true; }, { once: false });
+  /* 自动播放被拦时唯一的解：等用户碰一下屏幕。绑在 window 上，
+     一次手势之后就不再盯着（bgmBlocked 只在真被拒时置位）。 */
+  ['pointerdown', 'keydown'].forEach((ev) => {
+    window.addEventListener(ev, () => {
+      if (!bgmBlocked) return;
+      bgmBlocked = false;
+      bgmSync();
+    }, { passive: true });
+  });
+}
 
 /* 点歌单曲（VOD）状态。null = 直播模式，**所有与直播的分叉都会走直播分支**，
  * 行为与加这个字段之前逐条一致 —— v1.15 刚把切换/重连修好，不能顺手改坏。
@@ -1316,6 +1409,7 @@ function startMediaCard() {
 async function play() {
   const token = ++playToken;   // 本次播放的代际；期间被新的 play/pause/切台 取代即作废
   shouldPlay = true;
+  bgmWant(true);               // 有播放心愿了 → 万一源接不上，垫乐顶上（见 bgmSync 的 1.5s 延迟）
   retries = 0;
   clearTimeout(retryTimer);
   retryTimer = null;           // 本次重新起播，之前排队的重连作废
@@ -1364,6 +1458,7 @@ async function play() {
     //    是这一局还没有用户手势。保持跟播意图，点播放键就能续上。
     if (err && err.name === 'NotAllowedError') {
       shouldPlay = false;
+          bgmWant(false);          // 连直播都没手势放行，垫乐更别想（它一样会被策略拒）
       abortReissue = 0;
       playingAirId = '';
       exitVod();
@@ -1392,6 +1487,7 @@ async function play() {
 function pause() {
   ++playToken;                 // 让挂起的 play() 立即作废
   shouldPlay = false;
+  bgmWant(false);              // 用户主动暂停 → 一点声音都不给，别在这时候放垫乐
   switchUntil = 0;             // 用户主动暂停：结束换源窗口，pause 事件立即生效
   clearTimeout(retryTimer);
   retryTimer = null;           // 用户按了暂停，排队中的重连不再有意义
@@ -1479,20 +1575,6 @@ function startStream() {
   setStatus('loading', '正在接通直播…');
   play().then(renderAirBar).catch(() => { /* play() 内部已接管失败处理 */ });
 }
-
-/* 旧名保留给 airBar 点击等入口：语义已从「seek 对齐加入云开播」简化为
- * 「接上直播」—— 字节本身全网同步，无需对齐。 */
-async function playAirNow() { startStream(); }
-
-function startAir() {
-  if (!airInfo) {
-    setStatus('loading', '正在接通直播…');
-    toast('直播马上就来，正在连…');
-  }
-  startStream();
-}
-
-function rejoinAir() { startStream(); }
 
 function togglePlay() {
   /* 直播没有暂停，这个入口现在只负责「（重新）接上直播」。
@@ -2004,9 +2086,11 @@ audio.addEventListener('playing', () => {
   if (isVod()) renderVodProgress();
   updatePlayUI();
   icyYield(false);
+  bgmSync();          // 直播出声了 → 垫乐立刻撤
 });
 
 audio.addEventListener('pause', () => {
+  bgmSync();          // 放在 teardown 早退之前：切源也要跟住垫乐状态
   // 换源时旧源补发的 pause：用配额识别并消耗，不改任何状态。
   // 用户主动暂停会在 pause() 里自己刷 UI，不依赖这条事件。
   if (consumeTeardownPause()) return;
@@ -2038,6 +2122,7 @@ document.addEventListener('visibilitychange', () => {
 });
 
 audio.addEventListener('waiting', () => {
+  bgmSync();          // 卡住了 → 该有声却没声，垫乐准备上
   if (shouldPlay) {
     setStatus('loading', '缓冲中…');
     armStallWatchdog();
@@ -2046,6 +2131,7 @@ audio.addEventListener('waiting', () => {
 });
 
 audio.addEventListener('error', () => {
+  bgmSync();            // 直播真挂了 → 垫乐该上了（放最前面，换源早退也要跟）
   if (inSwitch()) {
     // 换源窗口内的 error 多半是旧源残留；若新源其实也挂了，窗口一过再补一次判断，
     // 避免「静默卡在连接中」。
@@ -2300,7 +2386,7 @@ function currentVersion() {
       if (v) return v;
     }
   } catch (_) { /* 忽略 */ }
-  return '1.21.20'; // 网页版：与 manifest versionName 同步维护
+  return '1.21.21'; // 网页版：与 manifest versionName 同步维护
 }
 
 let updateUrl = '';
