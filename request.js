@@ -1318,18 +1318,28 @@
       renderHist();
       paintLive();
 
+      /* 这一行只放「不看别处就不知道」的事：连接状态、空态解释。
+         队列数字一律交给 reqSum，ETA 交给我的歌卡 —— 以前这里又报一遍
+         「全网同步 · N 首在队」，和 reqSum 撞车，同一件事屏幕上说三遍
+         （用户原话「很乱」）。有队列时干脆不出声。 */
       if (reqHint) {
-        const qn = list.filter((x) => x && x.st !== 'miss').length;   // 出结论的不算在队
-        if (!list.length) {
-          reqHint.textContent = synced
-            ? '现在还没人点歌 · 电台放的是电台垫场，你点第一首'
-            : '未连上点歌台，当前仅本机生效';
-        } else if (synced) {
-          reqHint.textContent = '全网同步 · ' + qn + ' 首在队';
-        } else {
-          /* 离线时别再报一遍「N 首在队」：上面 reqSum 已经说了，
-             这里只讲连接状态（用户要判断的是「我的单发出去没有」）。 */
+        if (!synced) {
           reqHint.textContent = '未连上点歌台 · 连上后自动补发你的点歌';
+          reqHint.hidden = false;
+        } else if (!list.length) {
+          /* 空态要说真话。首页队列来自服务器开播播报（airState.next），
+             点歌台列表来自收到的点歌快照 —— 两者不同步时，列表空但**云端明明
+             有歌在排**，这时候说「还没人点歌」就是当着用户的面自相矛盾
+             （实测：首页队列 4 首、点歌台却说没人点歌）。 */
+          const cloud = (airState && Array.isArray(airState.next))
+            ? airState.next.length : 0;
+          reqHint.textContent = cloud
+            ? ('云端队列里还有 ' + cloud + ' 首在排 · 你点的会接在后面')
+            : '现在还没人点歌 · 电台放的是电台垫场，你点第一首';
+          reqHint.hidden = false;
+        } else {
+          reqHint.textContent = '';
+          reqHint.hidden = true;
         }
       }
     }
@@ -1348,9 +1358,11 @@
         if (q[k].cid === myId && !q[k].del) { mineIdx = k; break; }
       }
       sum.hidden = false;
+      /* 这里只讲**队列事实**（几首 + 你第几位）。以前第 1 位还会补一句
+         「马上开播」，而我的歌卡已经写着「马上就到」—— 同一件事两处说，
+         屏幕上再叠一句就是三遍（用户原话「很乱」）。ETA 只有一个出处：我的歌卡。 */
       sum.textContent = mineIdx >= 0
-        ? ('全网 ' + q.length + ' 首在队 · 你的歌第 ' + (mineIdx + 1) + ' 位' +
-           (mineIdx === 0 ? '，马上开播' : ''))
+        ? ('全网 ' + q.length + ' 首在队 · 你的歌第 ' + (mineIdx + 1) + ' 位')
         : ('全网 ' + q.length + ' 首在队 · 点一首排进去，DJ 会安排');
     }
 

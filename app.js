@@ -931,7 +931,6 @@ function safeSet(key, value) {
 /* ---------------- 基础元素 ---------------- */
 const $ = (id) => (typeof document !== 'undefined' && document ? document.getElementById(id) : null);
 const audio = $('audio');
-const bgmEl = $('bgm');
 const playBtn = $('playBtn');
 const statusEl = $('status');
 const stationNameEl = $('stationName');
@@ -992,96 +991,66 @@ let streamFailover = 0;               // 自上次成功以来连着失败了几
 let streamLastGoodTunnel = false;     // 上次**成功出声**走的是哪条线（决定重连先试哪条）
 let streamAttemptTunnel = false;      // 本次 liveUrl() 选中的线路，成功后回写成 lastGood
 
-/* ---------------- 垫乐兜底（**不是**「App 常驻背景音乐」） ----------------
- * 先把定位说死，免得下次又写成常驻 BGM：只有**用户想听、而直播此刻没出声**时才播，
- * 直播一出声立刻淡到静音。用户主动暂停 → 一点声音都没有。
+/* ---------------- 音量渐变（v1.21.22） ----------------
+ * 用户原话：「背景音乐可以删掉，直接用播放的音乐做背景，声音渐大渐小」。
+ * 所以这里**不再有第二条音轨**：只有直播那一条 #audio，音量自己做渐变。
  *
- * v1.21.21 修三个真 bug（上一版「背景音乐根本没生效」就栽在这）：
- *   ① bgmFadeOut() 定义了但**从没被调用** → 垫乐会一直压在直播上（混音）；
- *   ② 淡入挂在 'canplay' 上，不管直播有没有声，源一就绪就淡入；
- *   ③ 'canplay' 只在真正开始加载后才来，而 preload="none" 没人调 play() 就永远不来
- *      → bgmReady 永远是 false → bgmFadeIn() 直接 return，垫乐**一次都不会响**。
- *      加上 Android WebView 的自动播放策略会拒掉无手势的 play()，原代码
- *      `.catch(() => {})` 又把失败吞了 —— 用户侧就是「点了没反应，也没提示」。
- * 现在统一走一个决策函数 bgmSync()，别处不再单独判断。
- * 两个 audio 元素互不干扰：直播走 #audio，垫乐走 #bgm。 */
-const BGM_URL = STREAM_DIRECT.replace('/stream', '/bgm');
-const BGM_MAX_VOL = 0.30;             // 兜底音量：宁小勿抢，别盖过主播
-let bgmFadeTimer = null;
-let bgmWaitTimer = null;
-let bgmWanted = false;                // 现在要不要垫乐
-let bgmBlocked = false;               // 被自动播放策略拦过，等一次用户手势
-let bgmDead = false;                  // 源取不到就放弃，别每次断线都刷请求
+ * 为什么不要独立垫乐：两条音轨各播各的，直播出声时垫乐还在就是混音；
+ * 而用户要的恰恰是「就用正在播的这首歌」，不是多播一份 dj-bed。
+ *
+ * ① 起播淡入：流刚接上就满音量，听感是「啪」地一下（用户说的「播放还是乱」）。
+ *    改成从 0 渐到目标音量，约 0.9 秒。
+ * ② 暂停淡出：先渐到 0 再 pause。硬切会有「咔」的断音。
+ * ③ 目标音量永远跟着用户拖的音量条走，这里只做乘性渐变，**不接管音量**。
+ */
+let volFadeTimer = null;
+let volFadeWasAudible = false;   // 上一刻是否「有声」，用来只认「从无声到有声」
 
-function bgmFadeTo(target, steps = 10, delay = 45) {
-  if (!bgmEl) return;
-  clearTimeout(bgmFadeTimer);
-  const start = bgmEl.volume;
-  const delta = (target - start) / steps;
+function userVolume() {
+  const v = volumeEl ? Number(volumeEl.value) : 1;
+  return (Number.isFinite(v) && v >= 0) ? v : 1;
+}
+
+function volFadeTo(target, ms) {
+  if (!audio) return;
+  const steps = Math.max(6, Math.round((ms || 900) / 60));
+  const from = audio.volume;
+  clearTimeout(volFadeTimer);
   let i = 0;
   const tick = () => {
     i += 1;
-    const v = Math.max(0, Math.min(1, start + delta * i));
-    bgmEl.volume = v;
-    if (i < steps) {
-      bgmFadeTimer = setTimeout(tick, delay);
-    } else if (v <= 0.001) {
-      try { bgmEl.pause(); } catch (_) { /* 忽略 */ }
-    }
+    audio.volume = Math.max(0, Math.min(1, from + (target - from) * (i / steps)));
+    if (i < steps) volFadeTimer = setTimeout(tick, 60);
   };
   tick();
 }
 
-function bgmStreamLive() {
-  return !audio.paused && !audio.ended && audio.readyState >= 2;
+/** 起播淡入：只在「之前无声 → 现在有声」时做，切源过程中的 pause 不参与。 */
+function volFadeInForPlay() {
+  if (!audio) return;
+  if (volFadeWasAudible && audio.volume > 0.01) { audio.volume = userVolume(); return; }
+  audio.volume = 0;
+  volFadeTo(userVolume(), 900);
+  volFadeWasAudible = true;
 }
 
-/* 唯一的决策点。注意：这里读 shouldPlay，所以**只能在模块初始化之后**被调用
- * （事件回调 / 播放按钮路径），不能在顶层执行 —— shouldPlay 是后面才 let 声明的。 */
-function bgmSync() {
-  if (!bgmEl || bgmDead) return;
-  if (!(bgmWanted && !bgmStreamLive())) {
-    clearTimeout(bgmWaitTimer);        // 直播回来了 / 用户不想听了 → 立刻撤
-    bgmWaitTimer = null;
-    bgmFadeTo(0);
-    return;
-  }
-  /* 该有声却没声。**先等 1.5s 再上垫乐**：切源和重连也要经过「暂停」这一瞬，
-     不留这道延迟，每次换线都会「咔」一下冒出半秒垫乐，比没有还难受。 */
-  if (bgmWaitTimer) return;
-  bgmWaitTimer = setTimeout(() => {
-    bgmWaitTimer = null;
-    if (!bgmWanted || bgmDead || bgmStreamLive()) return;
-    if (bgmEl.paused) {
-      try {
-        const p = bgmEl.play();
-        if (p && typeof p.catch === 'function') p.catch(() => { bgmBlocked = true; });
-      } catch (_) { bgmBlocked = true; }
-    }
-    bgmFadeTo(BGM_MAX_VOL);
-  }, 1500);
+/** 暂停淡出：渐到 0，渐完再 pause。 */
+function volFadeOutThenPause(delayMs) {
+  if (!audio) return;
+  clearTimeout(volFadeTimer);
+  volFadeTo(0, 420);
+  volFadeWasAudible = false;
+  setTimeout(() => {
+    if (audio.paused || !shouldPlay) { try { audio.pause(); } catch (_) { /* 忽略 */ } }
+  }, delayMs || 460);
 }
 
-/* 播放意图变了（用户点了播放 / 暂停）时调这个；直播侧的事件在各自回调里调 bgmSync() */
-function bgmWant(on) {
-  bgmWanted = !!on;
-  bgmSync();
-}
-
-if (bgmEl) {
-  bgmEl.volume = 0;
-  bgmEl.preload = 'auto';
-  bgmEl.src = BGM_URL;
-  bgmEl.addEventListener('error', () => { bgmDead = true; }, { once: false });
-  /* 自动播放被拦时唯一的解：等用户碰一下屏幕。绑在 window 上，
-     一次手势之后就不再盯着（bgmBlocked 只在真被拒时置位）。 */
-  ['pointerdown', 'keydown'].forEach((ev) => {
-    window.addEventListener(ev, () => {
-      if (!bgmBlocked) return;
-      bgmBlocked = false;
-      bgmSync();
-    }, { passive: true });
-  });
+/** 用户拖音量条：立刻生效并打断渐变（渐变期间拖动必须跟手）。 */
+function volUserChanged() {
+  if (!audio) return;
+  clearTimeout(volFadeTimer);
+  audio.volume = userVolume();
+  if (audio.volume > 0.01) volFadeWasAudible = true;
 }
 
 /* 点歌单曲（VOD）状态。null = 直播模式，**所有与直播的分叉都会走直播分支**，
@@ -1409,7 +1378,6 @@ function startMediaCard() {
 async function play() {
   const token = ++playToken;   // 本次播放的代际；期间被新的 play/pause/切台 取代即作废
   shouldPlay = true;
-  bgmWant(true);               // 有播放心愿了 → 万一源接不上，垫乐顶上（见 bgmSync 的 1.5s 延迟）
   retries = 0;
   clearTimeout(retryTimer);
   retryTimer = null;           // 本次重新起播，之前排队的重连作废
@@ -1458,7 +1426,6 @@ async function play() {
     //    是这一局还没有用户手势。保持跟播意图，点播放键就能续上。
     if (err && err.name === 'NotAllowedError') {
       shouldPlay = false;
-          bgmWant(false);          // 连直播都没手势放行，垫乐更别想（它一样会被策略拒）
       abortReissue = 0;
       playingAirId = '';
       exitVod();
@@ -1487,7 +1454,7 @@ async function play() {
 function pause() {
   ++playToken;                 // 让挂起的 play() 立即作废
   shouldPlay = false;
-  bgmWant(false);              // 用户主动暂停 → 一点声音都不给，别在这时候放垫乐
+  volFadeOutThenPause();        // 用户主动暂停：渐到 0 再真停，别硬切出声
   switchUntil = 0;             // 用户主动暂停：结束换源窗口，pause 事件立即生效
   clearTimeout(retryTimer);
   retryTimer = null;           // 用户按了暂停，排队中的重连不再有意义
@@ -2035,6 +2002,7 @@ if (airBarEl) {
 }
 
 volumeEl.addEventListener('input', () => {
+    volUserChanged();        // 渐变期间拖音量条要跟手：立刻生效并打断渐变
   audio.volume = Number(volumeEl.value);
   safeSet('fm891.volume', String(audio.volume));
 });
@@ -2086,11 +2054,10 @@ audio.addEventListener('playing', () => {
   if (isVod()) renderVodProgress();
   updatePlayUI();
   icyYield(false);
-  bgmSync();          // 直播出声了 → 垫乐立刻撤
+    volFadeInForPlay();     // v1.21.22：出声这一刻从 0 渐到用户音量（约 0.9s）
 });
 
 audio.addEventListener('pause', () => {
-  bgmSync();          // 放在 teardown 早退之前：切源也要跟住垫乐状态
   // 换源时旧源补发的 pause：用配额识别并消耗，不改任何状态。
   // 用户主动暂停会在 pause() 里自己刷 UI，不依赖这条事件。
   if (consumeTeardownPause()) return;
@@ -2122,7 +2089,6 @@ document.addEventListener('visibilitychange', () => {
 });
 
 audio.addEventListener('waiting', () => {
-  bgmSync();          // 卡住了 → 该有声却没声，垫乐准备上
   if (shouldPlay) {
     setStatus('loading', '缓冲中…');
     armStallWatchdog();
@@ -2131,7 +2097,6 @@ audio.addEventListener('waiting', () => {
 });
 
 audio.addEventListener('error', () => {
-  bgmSync();            // 直播真挂了 → 垫乐该上了（放最前面，换源早退也要跟）
   if (inSwitch()) {
     // 换源窗口内的 error 多半是旧源残留；若新源其实也挂了，窗口一过再补一次判断，
     // 避免「静默卡在连接中」。
@@ -2386,7 +2351,7 @@ function currentVersion() {
       if (v) return v;
     }
   } catch (_) { /* 忽略 */ }
-  return '1.21.21'; // 网页版：与 manifest versionName 同步维护
+  return '1.21.22'; // 网页版：与 manifest versionName 同步维护
 }
 
 let updateUrl = '';

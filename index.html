@@ -230,7 +230,9 @@
   </div>
 
   <audio id="audio" preload="none"></audio>
-  <audio id="bgm" loop preload="none"></audio>
+  <!-- v1.21.22：删掉了独立垫乐音轨（#bgm）。用户要的是「就用正在播的
+       这首歌当背景、声音渐大渐小」，不是多播一份 dj-bed —— 两条音轨各播各的
+       只会互相打架。淡入淡出改由 audio 自身的音量渐变实现，见 app.js。 -->
   <script src="mqtt.min.js"></script>
   <script src="app.js"></script>
   <script src="request.js"></script>
