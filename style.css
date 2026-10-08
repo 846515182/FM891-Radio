@@ -1363,6 +1363,14 @@ footer { margin-top: 14px; }
   font-size: 12px;
   color: rgba(255, 255, 255, .4);
 }
+/* 时长（v1.21.26）：灰字直排，别做成和歌手一样的 chip —— 一眼分清谁是时长 */
+.req-cand-dur {
+  flex: none;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, .55);
+  white-space: nowrap;
+}
 .req-cand:active { transform: scale(0.98); }
 .req-cand.best { border-color: rgba(34, 211, 238, .42); }
 .req-cand.on {

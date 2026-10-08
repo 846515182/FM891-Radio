@@ -136,6 +136,13 @@
       }
       return String(n || '');
     }
+    /* 时长秒 → 4:32（v1.21.26）：候选列表不显示时长，用户只能闭眼挑 ——
+       50 秒截断片和 4 分半原曲在列表里长得一模一样（用户原话「版本点不对」）。 */
+    function fmtDur(sec) {
+      const s = Math.max(0, Math.round(Number(sec) || 0));
+      if (!s) return '';
+      return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+    }
     function renderCandModal() {
       if (!candMask || !candList) return;
       const it = items.get(candFor);
@@ -168,6 +175,14 @@
           const ar = document.createElement('em');
           ar.textContent = String(cd.a).slice(0, 12);
           row.appendChild(ar);
+        }
+        /* 时长（有才显示，0 = 老批候选没带数据，不占位） */
+        const du = fmtDur(cd.d);
+        if (du) {
+          const dt = document.createElement('span');
+          dt.className = 'req-cand-dur';
+          dt.textContent = du;
+          row.appendChild(dt);
         }
         row.addEventListener('click', (ev) => {
           ev.stopPropagation();
@@ -464,7 +479,7 @@
       /* pickwait（v1.21.12）：云端等到窗口结束也没人点「确认」，于是停下不替 TA
        * 选，把条目挂成「等你确认版本」。用户什么时候点了确认，下一轮就按那版下。 */
       const stages = ['search', 'download', 'transcode', 'merge', 'miss', 'cands',
-                       'pickwait'];
+                       'pickwait', 'swapfail'];
       const stage = stages.indexOf(msg.stage) >= 0 ? msg.stage : 'search';
       const rec = {
         stage: stage,
@@ -484,6 +499,7 @@
             t: String(c.t || '').slice(0, 40),
             s: String(c.s || '').slice(0, 20),   // 歌名
             a: String(c.a || '').slice(0, 20),   // 歌手（单独一列，便于一眼认原唱）
+            d: Math.max(0, Number(c.d) || 0),    // 时长秒（v1.21.26）：候选行显示 4:32
             best: !!c.best,
           }));
       }
@@ -522,6 +538,29 @@
           noteMiss(hit);
           render();
         }
+      }
+      /* 换版失败（v1.21.26）：服务器保留原版，这里必须把「已确认第 N 版 ·
+       * 正按这版下」的假提示清掉并说句实话 —— 用户原话「点了没反应」
+       * （2026-10-08 两次「转码没出货」零反馈实锤）。
+       * had 守卫：retain 重放（刷新/重连）时上一轮已清干净，别再 toast 一遍。 */
+      if (stage === 'swapfail') {
+        const hit = items.get(id);
+        const had = !!(hit && (hit.pick || hit.cands));
+        if (hit) {
+          if (hit.pick) {
+            hit.pick = '';
+            hit.ver = (hit.ver || 0) + 1;
+          }
+          if (hit.cands) {
+            hit.cands = null;
+            hit.candsSig = '';
+          }
+          delete picking[id];
+          if (candFor && String(candFor) === String(id)) closeCandModal();
+          publish(true);
+          render();
+        }
+        if (had) say('换版没成功，保留原版');
       }
       if (prog.size > MAX_PROG) {
         const arr = [];
@@ -595,6 +634,7 @@
         return { text: '等你确认版本 · 没替你选', cls: 'st-wait' };
       }
       if (p.stage === 'miss') return { text: '没找到这首歌 · 换一首吧', cls: 'st-miss' };
+      if (p.stage === 'swapfail') return { text: '换版失败 · 保留原版', cls: 'st-miss' };
       if (p.stage === 'merge') return { text: '云端合成播报中…', cls: 'st-search' };
       if (p.stage === 'transcode') return { text: '转码中… 马上就好', cls: 'st-search' };
       if (p.stage !== 'download' || !p.total) return { text: '全网找歌中…', cls: 'st-search' };
