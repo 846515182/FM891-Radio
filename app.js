@@ -1053,6 +1053,41 @@ function volUserChanged() {
   if (audio.volume > 0.01) volFadeWasAudible = true;
 }
 
+/* AI 播报背景音乐音量（服务器控制，0.0~1.0）。
+ * 用户原话：「AI 播报用当前播放的歌曲做背景音乐，音量大小服务器控制」。
+ * 服务端在 publish_ready 的 payload 里带 bgm_vol 字段，request.js 收到就喂进来。
+ * 播报人声目前由服务端烤进成片（垫底 = 这首歌自己、音量 = bgm_vol），
+ * 客户端这份是同一规格的落点 + 独立播报音轨场景的接口（见 __radio 导出）。 */
+let bgmVolume = 0.3;   // 默认 30%，服务端可覆盖
+
+function setBgmVolume(v) {
+  const n = Number(v);
+  if (Number.isFinite(n) && n >= 0 && n <= 1) {
+    bgmVolume = n;
+  }
+}
+
+/* 播报时降低当前歌曲音量（作为背景音乐），播报结束后恢复。
+ * 不额外播放音轨：把当前 audio 的音量渐低到 bgmVolume，结束后渐回用户音量。 */
+let bgmDucking = false;
+let bgmRestoreTimer = null;
+
+function duckForAnnouncement() {
+  if (!audio || bgmDucking) return;
+  bgmDucking = true;
+  clearTimeout(bgmRestoreTimer);
+  volFadeTo(bgmVolume, 800);   // 0.8 秒渐降到背景音乐音量
+}
+
+function restoreAfterAnnouncement() {
+  if (!bgmDucking) return;
+  bgmDucking = false;
+  clearTimeout(bgmRestoreTimer);
+  bgmRestoreTimer = setTimeout(() => {
+    volFadeTo(userVolume(), 1200);   // 1.2 秒渐回用户音量
+  }, 500);   // 播报结束后等 0.5 秒再恢复
+}
+
 /* 点歌单曲（VOD）状态。null = 直播模式，**所有与直播的分叉都会走直播分支**，
  * 行为与加这个字段之前逐条一致 —— v1.15 刚把切换/重连修好，不能顺手改坏。
  * 真正需要分叉的只有四处：播什么地址、出声后说什么、走不走 ICY 读曲目、
@@ -2351,7 +2386,7 @@ function currentVersion() {
       if (v) return v;
     }
   } catch (_) { /* 忽略 */ }
-  return '1.21.24'; // 网页版：与 manifest versionName 同步维护
+  return '1.21.25'; // 网页版：与 manifest versionName 同步维护
 }
 
 let updateUrl = '';
@@ -2719,6 +2754,10 @@ window.__radio = {
   index: () => index,
   select: (i) => selectStation(i, true),
   toast: (msg) => toast(msg),
+  /* 播报垫乐音量（服务端 bgm_vol，0.0~1.0）与播报压低/恢复接口 */
+  setBgmVolume: (v) => setBgmVolume(v),
+  duckForAnnouncement: () => duckForAnnouncement(),
+  restoreAfterAnnouncement: () => restoreAfterAnnouncement(),
   setStatus: (kind, text) => setStatus(kind, text),
   /* 蜻蜓官方接口：点歌模块拉 nowplaying 复用同一个地址，不要另开一份常量 */
   api: AUDIENCE_API,

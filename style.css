@@ -2946,3 +2946,27 @@ body.playing #cover .waveform i:nth-child(11) { animation-delay: 0.10s; animatio
 @media (prefers-reduced-motion: reduce) {
   body.playing #cover .waveform i { animation: none; }
 }
+
+/* ============ v1.21.25：「我点过的」要一眼看见 ============
+   用户原话「我点过的太不明显了」：✓ 徽章 + 行首色条 + 行底加深，
+   三样叠加，扫一眼就能把自己点的从人堆里分出来。 */
+.req-item .mine-tag {
+  flex: none;
+  display: inline-block;
+  padding: 1px 7px 2px;
+  border-radius: 999px;
+  background: rgba(236, 72, 153, 0.22);
+  border: 1px solid rgba(244, 114, 182, 0.6);
+  color: #fbcfe8;
+  font-size: 10.5px;
+  font-weight: 800;
+  font-style: normal;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+}
+.req-item.mine {
+  border-color: rgba(244, 114, 182, 0.55);
+  border-left: 3px solid #f472b6;
+  background: linear-gradient(180deg, rgba(236, 72, 153, 0.16), rgba(236, 72, 153, 0.05));
+}
+.req-item.mine .req-title { color: #fce7f3; }

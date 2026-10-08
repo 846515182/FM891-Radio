@@ -369,7 +369,7 @@
           np: typeof it.np === 'string' ? it.np.slice(0, 60) : '',
           scanAt: Number(it.scanAt) || 0,
           del: Number(it.del) || 0,
-          mine: false,
+          mine: !!(cur && cur.mine),   // 回声替换不丢「我点过的」（v1.21.25）
         };
         items.set(id, next);
         // 对端的「没找到」结论也按一次性提醒走（toast 只说一次、20 秒后撤）
@@ -422,6 +422,7 @@
         mine: true,
       };
       items.set(it.id, it);
+      histNote(t, '点过');   // 当场记账（v1.21.25）：台账 = 我点过的唯一持久源
       prune();      // 先淘汰超限的再发，否则淘汰结果发不出去，对端一会儿又同步回来
       publish();
       render();
@@ -620,6 +621,13 @@
       if (!id || !title || !/^https?:\/\//i.test(url)) return false;
       const dur = Number(msg.dur) || 0;
       if (dur && (dur < 1 || dur > 6 * 3600)) return false;
+      /* 播报垫乐音量由服务器控制（publish_ready 带 bgm_vol，0.0~1.0）：
+       * 收到就同步给播放器模块；缺省/脏值一律维持 0.3。 */
+      const bgmVolRcv = Number(msg.bgm_vol);
+      if (Number.isFinite(bgmVolRcv) && bgmVolRcv >= 0 && bgmVolRcv <= 1 &&
+          R && typeof R.setBgmVolume === 'function') {
+        R.setBgmVolume(bgmVolRcv);
+      }
       const ver = Number(msg.ver) || 0;
       const ts = Number(msg.ts) || Date.now();
       const cur = ready.get(id);
@@ -1064,9 +1072,19 @@
     function histNote(title, how) {
       const t = String(title || '').trim();
       if (!t) return;
+      /* 一首歌只留一条、状态取最新（点过 → 播过了 是同一条的状态推进，
+       * 不去重的话台账里同一首歌能堆三行）。 */
+      myHist = myHist.filter((h) => norm(h.t) !== norm(t));
       myHist.unshift({ t: t.slice(0, 30), k: how, at: Date.now() });
       if (myHist.length > 20) myHist.length = 20;
       try { localStorage.setItem(HIST_KEY, JSON.stringify(myHist)); } catch (_) { /* 忽略 */ }
+    }
+
+    /* 台账里有没有这首（归一化比对，和 addRequest 的查重同口径）。 */
+    function histHas(title) {
+      const n = norm(title);
+      if (!n) return false;
+      return myHist.some((h) => norm(h.t) === n);
     }
 
     function renderHist() {
@@ -1130,7 +1148,10 @@
      * 一条能占 3~4 行高，列表一长，点歌前得先滚过去。 */
     function buildRow(it, i) {
       const li = document.createElement('li');
-      li.className = 'req-item' + (isOwnReq(it) ? ' mine' : '');
+      /* 「我点过的」双判定（v1.21.25）：本机 cid 认得出的单 + 本地台账里
+       * 点过的歌名 —— 换一批/快照替换/重启都冲不掉（台账存 localStorage）。 */
+      const mineTagged = isOwnReq(it) || histHas(it.title);
+      li.className = 'req-item' + (mineTagged ? ' mine' : '');
       const lab = stLabel(it, i);
       const body = document.createElement('span');
       body.className = 'req-body';
@@ -1147,6 +1168,12 @@
       /* 只写「谁点的」：状态由右侧胶囊负责，同一个信息不出现两遍
          （v1.21.12 遗留：meta 与胶囊都写状态，一行里同一句话看两遍）。 */
       meta.textContent = it.who;
+      if (mineTagged) {
+        const tag = document.createElement('b');
+        tag.className = 'mine-tag';
+        tag.textContent = '✓ 我点过的';
+        line2.appendChild(tag);
+      }
       line2.appendChild(meta);
       body.appendChild(line2);
       li.appendChild(body);
