@@ -1068,7 +1068,9 @@ function setBgmVolume(v) {
 }
 
 /* 播报时降低当前歌曲音量（作为背景音乐），播报结束后恢复。
- * 不额外播放音轨：把当前 audio 的音量渐低到 bgmVolume，结束后渐回用户音量。 */
+ * 不额外播放音轨：把当前 audio 的音量渐低到 bgmVolume，结束后渐回用户音量。
+ * 目标取 min(用户音量, bgm) —— 只压不抬：用户音量本来就低于 bgm_vol 时，
+ * 「压低」不能反过来把音量抬上去（2026-10-08 复盘逮到的反直觉边角）。 */
 let bgmDucking = false;
 let bgmRestoreTimer = null;
 
@@ -1076,7 +1078,7 @@ function duckForAnnouncement() {
   if (!audio || bgmDucking) return;
   bgmDucking = true;
   clearTimeout(bgmRestoreTimer);
-  volFadeTo(bgmVolume, 800);   // 0.8 秒渐降到背景音乐音量
+  volFadeTo(Math.min(userVolume(), bgmVolume), 800);   // 0.8 秒渐降到背景音乐音量
 }
 
 function restoreAfterAnnouncement() {
