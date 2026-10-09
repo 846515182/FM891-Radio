@@ -384,6 +384,9 @@
           np: typeof it.np === 'string' ? it.np.slice(0, 60) : '',
           scanAt: Number(it.scanAt) || 0,
           del: Number(it.del) || 0,
+          // v1.21.27：歌手跟着快照走 —— 不进 schema 的话对端存的 pick 歌手
+          // （it.artist）在合并时被整条重建冲掉，跨设备又变回不显示。
+          artist: typeof it.artist === 'string' ? it.artist.slice(0, 40) : '',
           mine: !!(cur && cur.mine),   // 回声替换不丢「我点过的」（v1.21.25）
         };
         items.set(id, next);
@@ -401,15 +404,29 @@
       const now = Date.now();
       if (now - lastAddAt < MIN_GAP) { R.toast('点太快啦，缓一缓～'); return false; }
 
-      /* 同一首还在队列里就别重复点（不同人点同一首 = 跟唱，允许）。
-         v1.21.17：**没找到的不算「你点过」** —— 上次云端没搜到，换个写法再试
-         一次是正常动作，挡回去只会让人觉得「点歌一直失败」。 */
-      let dup = false;
+      /* 撤旧接新（v1.21.27），不再一句「你已经点过」挡回去：重新点同一首的
+         语义是「上一版不对，换一版重来」，旧单不撤就两条同名并存 —— 挑版落在
+         新单上、云端播出的却是旧单（2026-10-09《南山雪》用户实锤，名下挂着
+         5 条备好的同名单）。墓碑随新单一并 publish，云端撤单连坐（摘轮播 +
+         招呼插播退场）。三种情形：
+           · 没找到的旧单 → 也撤（以前放行重点、云端却当重复把新单丢了，
+             「换首歌再点没反应」一半是它）；
+           · 正在播的旧单 → 不撤（撤了连正在播的音源一起摘），播完开播清扫
+             自会撤，新单照收；
+           · 别人的单/别人点同一首 → 不动（跟唱允许，cid 不同不匹配）。
+         MIN_GAP 仍然挡真·双击。 */
+      let dup = null;
       items.forEach((it) => {
-        if (!it.del && it.mine && it.st !== 'miss'
-            && norm(it.title) === norm(t)) dup = true;
+        // isOwnReq = cid 是我 或 本地标过 mine —— 重启后快照恢复回来的自己的单
+        // mine 是 false，只认 mine 的话重启后再点同一首就换不掉（旧单还挂在队列里）。
+        if (!dup && !it.del && isOwnReq(it) && norm(it.title) === norm(t)) dup = it;
       });
-      if (dup) { R.toast('你已经点过《' + t + '》啦'); return false; }
+      if (dup && !(airState && airState.id === dup.id)) {
+        tombstone(dup);
+        prog.delete(dup.id);
+        delete picking[dup.id];
+        if (candFor === String(dup.id)) closeCandModal();
+      }
       /* 冷却只在**真入队**时消耗。以前这行紧跟在冷却判定后面、排在重复判定
          之前：被「点过啦」拒一次就把冷却吃掉，换首歌再点又吃「点太快啦」——
          一连两次拒绝，用户看到的就是「点歌怎么老失败」。 */
@@ -679,11 +696,16 @@
         from: typeof msg.from === 'string' ? msg.from.slice(0, 16) : '',
         to: typeof msg.to === 'string' ? msg.to.slice(0, 16) : '',
         ann: typeof msg.ann === 'string' ? msg.ann.slice(0, 80) : '',
+        // v1.21.27：歌手随 ready 一起下发（云端 publish_ready 一直带着这个
+        // 字段，这里以前直接丢弃 -- 「排队不显示歌手」断点之一）
+        artist: typeof msg.artist === 'string' ? msg.artist.slice(0, 40) : '',
       };
       ready.set(id, entry);
       pruneReady();
       const it = findItem(id, title);
       if (it) {
+        // 回填到队列条目：排队行第二行「谁点的 · 歌手」就靠它
+        if (entry.artist) it.artist = entry.artist;
         /* 只有**第一次**备好才播报道喜：换版出片、隧道换域名全量重发都是
          * ver+1，每次都喊一嗓子 =「备好了」一天被重复说几遍（用户原话
          * 「播报有时候还会重复播报」的根）。 */
@@ -931,6 +953,14 @@
         next: normNext(j.next),      // 「接下来」歌单（客户端那栏就靠它）
         wall: Array.isArray(j.wall) ? j.wall : [],   // 播出台账（撤单清扫用）
       };
+      /* v1.21.27：air.next 里带歌手的条目回填到队列模型 —— 别人的单没走
+         本机 onReady（r/* 只订阅自己的），排队行的歌手只能从这里来。 */
+      (airState.next || []).forEach((nx) => {
+        if (nx && nx.artist) {
+          const e = items.get(nx.id);
+          if (e && !e.del && !e.artist) e.artist = String(nx.artist).slice(0, 40);
+        }
+      });
       /* 一次性提醒（v1.21.9）：上一首播完了 —— 我点的那单立刻撤下，不留在
        * 队列里当历史；别人的同理（队列只放「还没轮到」的）。撤在
        * queuePromise 之前，免得它把「播完」误报成「备好了，马上到」。 */
@@ -963,6 +993,10 @@
       if (String(it.pick || '') === num) return;
       it.pick = num;
       it.ver = (it.ver || 0) + 1;      // ver 必须涨，否则对端手里那份会盖回来
+      /* v1.21.27：挑中哪版就把那版的歌手记到条目上（候选行 a 字段）——
+         排队行立刻显示，不用等 ready；云端也会按同一批候选入账。 */
+      const cd = (it.cands || []).find((c) => String(c.n) === num);
+      if (cd && cd.a) it.artist = String(cd.a).slice(0, 24);
       delete picking[it.id];           // 已经发出去了，别再留着当「待确认」
       publish(true);
       render();
@@ -1205,9 +1239,9 @@
       line2.className = 'req-line2';
       const meta = document.createElement('small');
       meta.className = 'req-meta';
-      /* 只写「谁点的」：状态由右侧胶囊负责，同一个信息不出现两遍
-         （v1.21.12 遗留：meta 与胶囊都写状态，一行里同一句话看两遍）。 */
-      meta.textContent = it.who;
+      /* 「谁点的 · 歌手」（v1.21.27 加歌手）：同名不同版本的歌，光看歌名
+         分不清队里排的是哪一版；状态仍由右侧胶囊负责，不重复显示。 */
+      meta.textContent = [it.who, it.artist].filter(Boolean).join(' · ');
       if (mineTagged) {
         const tag = document.createElement('b');
         tag.className = 'mine-tag';
