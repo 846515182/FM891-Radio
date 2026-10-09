@@ -541,6 +541,24 @@
             delete picking[ci.id];   // 待确认的行选择同样作废，别在新列表里高亮旧编号
             render();
             maybeOpenCand(ci);   // v1.21.11：新候选自动弹窗（自己的单，一轮一次）
+          } else if (ci.cands && rec.cands) {
+            /* 同一批候选（n:t 未变）只是补了时长 d → **只把 d 写进去**：
+             * 不作废已选、不涨 ver、不重弹窗（任务二：bot 路先秒出候选，
+             * 后台再逐条读文件时长、补发同一批带 d 的）。 */
+            let chg = false;
+            const byN = {};
+            rec.cands.forEach((c) => { byN[c.n] = c; });
+            ci.cands.forEach((c) => {
+              const u = byN[c.n];
+              const nd = u ? Math.max(0, Number(u.d) || 0) : 0;
+              if (nd && nd !== Number(c.d || 0)) { c.d = nd; chg = true; }
+            });
+            if (chg) {
+              render();
+              if (candMask && !candMask.hidden && String(candFor) === String(ci.id)) {
+                renderCandModal();   // 弹窗开着 → 就地重画，把新时长显示出来
+              }
+            }
           }
         }
       }
