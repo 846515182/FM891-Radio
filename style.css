@@ -2729,49 +2729,8 @@ body.track-change #cover {
   height: 26px;
 }
 
-/* ---------- 我今天点过的 ---------- */
-.req-hist { margin: 8px 0 2px; }
-.req-hist > summary {
-  cursor: pointer;
-  font-size: 12px;
-  color: var(--muted);
-  padding: 6px 2px;
-  list-style: none;
-}
-.req-hist > summary::-webkit-details-marker { display: none; }
-.req-hist > summary::before { content: '▸ '; }
-.req-hist[open] > summary::before { content: '▾ '; }
-.hist-list { margin: 0; padding: 0; list-style: none; }
-.hist-item {
-  display: flex;
-  align-items: center;
-  padding: 7px 10px;
-  margin-bottom: 6px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.035);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-}
-.hist-item em {
-  flex: 1;
-  min-width: 0;
-  font-style: normal;
-  font-size: 13px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.hist-item .hist-k { flex: none; margin: 0 8px; font-size: 11px; color: var(--muted); }
-.hist-item .hist-again {
-  flex: none;
-  min-height: 30px;
-  padding: 0 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--text);
-  font-size: 11.5px;
-  cursor: pointer;
-}
+/* ---------- 我今天点过的 ----------
+   v1.21.29：列表整块移除（用户「这个功能没啥用」），HTML/JS/CSS 三层一起摘。 */
 
 /* ---------- 分组标题：更轻 ---------- */
 .req-group {
@@ -2955,26 +2914,311 @@ body.playing #cover .waveform i:nth-child(11) { animation-delay: 0.10s; animatio
   body.playing #cover .waveform i { animation: none; }
 }
 
-/* ============ v1.21.25：「我点过的」要一眼看见 ============
-   用户原话「我点过的太不明显了」：✓ 徽章 + 行首色条 + 行底加深，
-   三样叠加，扫一眼就能把自己点的从人堆里分出来。 */
-.req-item .mine-tag {
-  flex: none;
-  display: inline-block;
-  padding: 1px 7px 2px;
-  border-radius: 999px;
-  background: rgba(236, 72, 153, 0.22);
-  border: 1px solid rgba(244, 114, 182, 0.6);
-  color: #fbcfe8;
-  font-size: 10.5px;
-  font-weight: 800;
-  font-style: normal;
-  letter-spacing: 0.4px;
-  white-space: nowrap;
-}
+/* ============ v1.21.25「我点过的」高亮 → v1.21.29 只剩行高亮 ============
+   v1.21.25：✓ 徽章 + 行首色条 + 行底加深三样叠加。v1.21.29 把徽章摘掉
+   （用户确认「徽章也一起摘」，本地台账一并删除），只留下 `.mine` 行高亮 ——
+   它认的是本机 cid 的实时归属，跟被删掉的台账没关系，撤单/选版仍靠它选中自己的单。 */
 .req-item.mine {
   border-color: rgba(244, 114, 182, 0.55);
   border-left: 3px solid #f472b6;
   background: linear-gradient(180deg, rgba(236, 72, 153, 0.16), rgba(236, 72, 153, 0.05));
 }
 .req-item.mine .req-title { color: #fce7f3; }
+
+/* =====================================================================
+   v1.21.29 点歌台大改版 —— 干净卡片式
+   用户原话：「点歌界面太丑，感觉就跟没装修的一样」。
+   病根不是缺功能，是**没有层次**：输入框、联想面板、翻页条、折叠行、提示行、
+   底部按钮，每一块都是同一种深紫底 + 同一种 1px 细边 + 同一种字号，堆在一起
+   就是一张还没排版的表单。这次按「一屏一件事」重排，每块自带卡片外衣，
+   字号拉出层级（11 小标题 / 12.5 次要 / 14.5 歌名 / 16 输入）：
+
+     头部  细分隔线：标题 15 / 在线人数 11 / 昵称·关闭 11.5
+     卡 A  点歌   —— 唯一的视觉主角：46px 输入框 + 88px 主按钮
+     卡 A′ 曲库   —— 联想/翻页收在卡内，页脚按钮改小胶囊
+     二级  主播性格 —— 折叠，但折叠那一行**报出当前选了什么**（v1.21.29 新增）
+     卡 C  我的歌 —— 自己的单，品牌渐变底
+     卡 D  队列   —— 自带底 + 分组小标题，没有行就整节隐藏（空框更丑）
+
+   圆角：卡 16 / 控件 12 / 药丸 999。
+   下面每一条都不许破坏 layout-gate 钉住的老规矩：输入框必须有 1px 可见边 +
+   非透明底、点歌按钮 ≤96px 且有 box-shadow、.ac-panel 保持 padding 6 +
+   border 1（页脚 = 面板宽 - 14）、.ac-list ≤180px、抽屉遮罩上浅下深。
+   ===================================================================== */
+
+/* ---- hidden 兜底：下面给这些块设了 display，不补一条 [hidden] 就藏不住 ---- */
+.compose-card[hidden], .my-card[hidden], .queue-sec[hidden],
+.req-sum[hidden], .req-hint[hidden], .req-chips[hidden],
+.req-nick[hidden], .ac-panel[hidden] { display: none; }
+
+/* ---- 头部：一行细线把「标题 / 谁在点 / 我是谁」和下面的内容隔开 ---- */
+.req-head {
+  align-items: center;
+  padding: 2px 2px 11px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+.req-head h3 { font-size: 15px; font-weight: 800; letter-spacing: 0.02em; }
+.req-live { font-size: 11px; color: var(--muted); opacity: 0.85; }
+.req-head-r { gap: 8px; }
+.nick-btn {
+  min-height: 28px;
+  padding: 0 12px;
+  font-size: 11.5px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--muted);
+}
+.req-head .dialog-x {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* ---- 卡片公共外衣 ---- */
+.compose-card,
+.my-card,
+.queue-sec {
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: 0 16px 32px -26px rgba(0, 0, 0, 0.95);
+}
+/* 点歌卡是主角，给一点品牌色（原来的粉紫渐变太冲，压到 1/3 亮度） */
+.compose-card {
+  margin: 12px 0 10px;
+  padding: 12px;
+  border-color: rgba(139, 92, 246, 0.26);
+  background: linear-gradient(180deg,
+    rgba(139, 92, 246, 0.15), rgba(255, 255, 255, 0.04));
+}
+.my-card {
+  margin: 0 0 10px;
+  padding: 12px;
+  border-color: rgba(236, 72, 153, 0.34);
+  background: linear-gradient(180deg,
+    rgba(236, 72, 153, 0.17), rgba(139, 92, 246, 0.07));
+}
+.queue-sec {
+  margin: 0 0 6px;
+  padding: 11px 12px 12px;
+  background: rgba(255, 255, 255, 0.035);
+}
+.sec-h {
+  margin: 0 0 9px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  color: rgba(184, 173, 224, 0.62);
+}
+
+/* ---- 卡 A：输入行（46px 高、16px 字 —— ≥16 才不会触发 iOS 聚焦缩放）---- */
+.req-compose-row { gap: 10px; }
+.compose-card .req-form input {
+  display: block;
+  height: 46px;
+  box-sizing: border-box;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  font-size: 16px;
+  transition: border-color var(--t-fast) var(--ease),
+              background var(--t-fast) var(--ease);
+}
+.compose-card .req-form input:focus {
+  outline: none;
+  border-color: rgba(139, 92, 246, 0.7);
+  background: rgba(255, 255, 255, 0.09);
+}
+.req-form .req-go {
+  flex: none;
+  width: 88px;
+  height: 46px;
+  padding: 0 4px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  background: var(--grad);
+  color: #fff;
+  box-shadow: 0 6px 16px -9px rgba(236, 72, 152, 0.85);
+}
+.req-form .req-go:active { transform: translateY(1px); }
+
+/* ---- 卡 A′：联想面板（在流内，收在卡里；页脚按钮改小胶囊）---- */
+.ac-panel {
+  margin-top: 10px;
+  padding: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.24);
+}
+.ac-panel .ac-list { max-height: 168px; }
+.ac-foot { gap: 8px; padding: 7px 0 0; }
+.ac-pg,
+.ac-cloud {
+  min-height: 30px;
+  padding: 0 13px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  font-size: 12px;
+}
+.ac-pg-n {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- 卡 A″：曲库快捷词（横向一排，滚着看）---- */
+.req-chips { margin: 12px -4px 0; padding: 2px 4px 4px; gap: 7px; }
+
+/* ---- 二级：主播性格（折叠，但那一行要报出当前选了什么）---- */
+.req-more {
+  margin-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+.req-more > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 2px 6px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.req-more > summary::-webkit-details-marker { display: none; }
+.req-more > summary::after {
+  content: '\203A';
+  margin-left: auto;
+  font-size: 17px;
+  line-height: 1;
+  color: rgba(184, 173, 224, 0.7);
+  transform: rotate(90deg);
+  transition: transform var(--t-fast) var(--ease);
+}
+.req-more[open] > summary::after { transform: rotate(-90deg); }
+.req-more[open] > summary { color: var(--text); }
+.more-val {
+  font-style: normal;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: rgba(246, 243, 255, 0.7);
+}
+.mood-row { gap: 6px; flex-wrap: wrap; padding: 6px 0 4px; }
+.mood-lb { font-size: 11.5px; color: var(--muted); }
+.mood {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  font-size: 12.5px;
+}
+.mood.on {
+  border-color: transparent;
+  background: var(--grad);
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 5px 14px -8px rgba(236, 72, 152, 0.9);
+}
+
+/* ---- 昵称（点了头部「昵称」才出现）---- */
+.req-nick {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* ---- 卡 C：我的歌 ---- */
+.my-card-h {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: rgba(252, 231, 243, 0.78);
+}
+.my-card-t { display: block; font-size: 16px; font-weight: 800; color: #fff; }
+.my-card-s { display: block; font-size: 12px; color: rgba(255, 255, 255, 0.8); }
+.my-card-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+
+/* ---- 提示行 / 队列小计（原来都是没头没尾的一行灰字）---- */
+.req-hint {
+  margin: 0 2px 10px;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: rgba(184, 173, 224, 0.85);
+}
+.queue-sec .req-sum {
+  margin: 0 0 10px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: rgba(184, 173, 224, 0.9);
+}
+.queue-sec .req-sum[hidden] { display: none; }
+
+/* ---- 卡 D：队列行 ---- */
+.queue-sec .req-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.req-group {
+  list-style: none;
+  margin: 4px 0 1px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  color: rgba(184, 173, 224, 0.6);
+}
+.req-item {
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.045);
+}
+.req-title { font-size: 14.5px; font-weight: 700; }
+.req-meta { font-size: 11.5px; }
+.req-st { font-size: 10.5px; padding: 4px 9px; }
+/* （v1.21.29：此处原有 `.mine-tag` 徽章样式，随「我今天点过的」一并删除） */
+
+/* ---- 底部「收起」：原来通栏大盒子白占一行，改成居中小药丸 ---- */
+.req-dialog .dialog-actions { justify-content: center; padding-top: 4px; }
+.req-dialog .dialog-actions .ghost {
+  flex: 0 0 auto;
+  margin: 0 auto;
+  padding: 9px 28px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* ---- 第二行换行，别把「谁点的 · 歌手」挤成「周杰…」----
+   老规则 `.req-meta{flex:1;min-width:0;ellipsis}` 让 meta **先**吞掉所有剩余
+   宽度，于是「✓ 我点过的 + 歌手 + 选版本把手」三样挤一行时，最先被截断的
+   恰恰是 v1.21.27 刚加的歌手那一段（用户要的就是「一眼认出是哪一版」）。
+   改成可换行 + 按内容定宽：把手放不下就整块掉到下一行，谁也不截谁。 */
+.req-line2 { flex-wrap: wrap; gap: 5px 8px; }
+.req-line2 .req-meta { flex: 0 1 auto; min-width: 60px; }
+.req-item .req-line2 .req-candchip,
+.req-item .req-line2 .req-waitpick { flex: none; margin-left: 0; }

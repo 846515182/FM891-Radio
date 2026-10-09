@@ -156,7 +156,8 @@
         <!-- 输入 + 点歌同一行：这是整个面板唯一的主按钮（省掉一整行的高度） -->
         <div class="req-compose-row">
           <div class="ac-wrap">
-            <input id="reqInput" type="text" placeholder="想听哪首歌？主播全网找" maxlength="30" />
+            <input id="reqInput" type="text" placeholder="想听哪首歌？主播全网找"
+                   maxlength="30" enterkeyhint="search" />
           </div>
           <button class="primary req-go" id="reqGo" type="submit">点歌</button>
         </div>
@@ -178,8 +179,8 @@
         <!-- v1.21.12：这里原来还有「送给谁 + 祝福语 + AI 写祝福」。用户原话
              「加一句想说的有啥用，没用就删掉相关的代码」—— 整块移除：控件、AI 祝福
              拉取、云端祝福词本，以及播报文案里的「送给…：…」都一并去掉。 -->
-        <details class="req-more">
-          <summary>更多 · 主播性格</summary>
+        <details class="req-more" id="reqMore">
+          <summary>更多 · 主播性格<em class="more-val" id="moodVal">自动</em></summary>
           <!-- 主播性格：**你自己选**。时段自动只是兜底（用户原话：用户自己选 DJ 的
                性格，比我们替他决定好得多）。选中值跟着这单一起发给云端。 -->
           <div class="mood-row" id="moodRow" role="radiogroup" aria-label="主播性格">
@@ -194,14 +195,19 @@
       </div>
       <!-- 我的歌：自己的 pending 单置顶，位次 + 预计时间 + 直接操作 -->
       <div class="my-card" id="reqMyCard" hidden></div>
-      <p class="req-sum" id="reqSum" hidden></p>
       <p class="req-hint" id="reqHint"></p>
-      <ul class="req-list" id="reqList"></ul>
-      <!-- 我今天点过的：播过/没找到/已取消都留个底，可再点一次 -->
-      <details class="req-hist" id="reqHist" hidden>
-        <summary>我今天点过的</summary>
-        <ul class="hist-list" id="reqHistList"></ul>
-      </details>
+      <!-- v1.21.29 卡片化：队列自己成一节、自带一层底。小标题不是写死的 ——
+           队列里有分组（我的其它点歌 / 大家在点），标题由 putGroup 按情况塞，
+           写死一个「大家在点」会和它撞车。这一节只在**真有行**时显示。 -->
+      <section class="sec queue-sec" id="reqQueue" hidden>
+        <p class="req-sum" id="reqSum" hidden></p>
+        <ul class="req-list" id="reqList"></ul>
+      </section>
+      <!-- v1.21.29：「我今天点过的」整条链路摘干净（用户原话「这个功能没啥用」，
+           随后确认连行首 ✓ 徽章也一起摘）。删掉的是：HTML 折叠块、renderHist()、
+           retryOwn()、本地台账 fm891.myhist（写入 histNote / 查询 histHas）、
+           ✓ 徽章 DOM 与 .mine-tag 样式；老设备上的旧台账键也在启动时清掉。
+           队列行剩下的高亮认的是**实时归属**（本机 cid），和台账无关。 -->
       <div class="dialog-actions">
         <button class="ghost" id="reqClose" type="button">收起</button>
       </div>

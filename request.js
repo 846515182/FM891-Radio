@@ -233,7 +233,6 @@
     function cancelRequest(it) {
       if (!it || it.del) return false;
       const title = String(it.title || '这首歌');
-      if (isOwnReq(it)) histNote(title, '已取消');
       tombstone(it);                      // del 墓碑 + ver 递增
       prog.delete(it.id);                 // 陈旧进度跟着撤，别再画找歌中
       delete picking[it.id];
@@ -454,7 +453,6 @@
         mine: true,
       };
       items.set(it.id, it);
-      histNote(t, '点过');   // 当场记账（v1.21.25）：台账 = 我点过的唯一持久源
       prune();      // 先淘汰超限的再发，否则淘汰结果发不出去，对端一会儿又同步回来
       publish();
       render();
@@ -838,10 +836,17 @@
 
     function renderMood() {
       const row = $('moodRow');
+      const cur = curMood();
+      /* v1.21.29：折叠着的那一行也要报出当前选了什么 —— 用户原话「主播性格
+         选了完全没生效」，一半是**根本看不见自己选了啥**。 */
+      const val = $('moodVal');
+      if (val) {
+        const m = MOODS.filter((x) => x.id === cur)[0];
+        val.textContent = m ? (m.label + ' · ' + m.hint) : '按时段自动';
+      }
       if (!row || typeof row.querySelectorAll !== 'function') return;
       const list = row.querySelectorAll('.mood');
       if (typeof list.forEach !== 'function') return;
-      const cur = curMood();
       list.forEach((b) => {
         if (!b || typeof b.getAttribute !== 'function') return;
         const on = (b.getAttribute('data-mood') || '') === cur;
@@ -934,14 +939,12 @@
           if (mp && mp.stage !== 'miss') { it.missAt = 0; return; }   // 翻案：别撤
           if (!it.missAt) {
             it.missAt = now;
-            if (isOwnReq(it)) histNote(it.title, '没找到');   // 留底，别无声消失
             return;
           }
           if (now - it.missAt > MISS_GRACE) changed = tombstone(it) || changed;
           return;
         }
         if (cur && it.id !== cur && wallIds[it.id]) {
-          if (isOwnReq(it)) histNote(it.title, '播过了');     // 播过也要记账
           changed = tombstone(it) || changed;
         }
       });
@@ -1148,70 +1151,15 @@
       return '大约还有 ' + (m <= 1 ? '1' : m) + ' 分钟';
     }
 
-    /* ---------------- 我今天点过的（本地台账） ----------------
-     * 以前播过/没找到/已撤的单 20 秒后直接从列表消失，用户完全不知道自己点过
-     * 什么、结果如何 —— 现在留一份底，还能一键再点一次。 */
-    const HIST_KEY = 'fm891.myhist';
-    let myHist = [];
-    try {
-      const raw = localStorage.getItem(HIST_KEY);
-      if (raw) {
-        const a = JSON.parse(raw);
-        if (Array.isArray(a)) myHist = a.slice(0, 20);
-      }
-    } catch (_) { myHist = []; }
-
-    function histNote(title, how) {
-      const t = String(title || '').trim();
-      if (!t) return;
-      /* 一首歌只留一条、状态取最新（点过 → 播过了 是同一条的状态推进，
-       * 不去重的话台账里同一首歌能堆三行）。 */
-      myHist = myHist.filter((h) => norm(h.t) !== norm(t));
-      myHist.unshift({ t: t.slice(0, 30), k: how, at: Date.now() });
-      if (myHist.length > 20) myHist.length = 20;
-      try { localStorage.setItem(HIST_KEY, JSON.stringify(myHist)); } catch (_) { /* 忽略 */ }
-    }
-
-    /* 台账里有没有这首（归一化比对，和 addRequest 的查重同口径）。 */
-    function histHas(title) {
-      const n = norm(title);
-      if (!n) return false;
-      return myHist.some((h) => norm(h.t) === n);
-    }
-
-    function renderHist() {
-      const box = $('reqHist');
-      const ul = $('reqHistList');
-      if (!box || !ul) return;
-      box.hidden = !myHist.length;
-      if (!myHist.length) return;
-      ul.textContent = '';
-      myHist.slice(0, 8).forEach((h) => {
-        const li = document.createElement('li');
-        li.className = 'hist-item';
-        const em = document.createElement('em');
-        em.textContent = h.t;
-        const k = document.createElement('span');
-        k.className = 'hist-k';
-        k.textContent = h.k || '播过';
-        const again = document.createElement('button');
-        again.type = 'button';
-        again.className = 'hist-again';
-        again.textContent = '再点一次';
-        again.addEventListener('click', (ev) => { ev.stopPropagation(); retryOwn(h.t); });
-        li.appendChild(em);
-        li.appendChild(k);
-        li.appendChild(again);
-        ul.appendChild(li);
-      });
-    }
-
-    function retryOwn(title) {
-      const t = String(title || '').trim();
-      if (!t) return;
-      if (reqInput) reqInput.value = t;
-      addRequest(t);
-    }
+    /* ---------------- 「我今天点过的」整块摘除（v1.21.29） ----------------
+     * 这条链路一共跨了两版才长齐，用户两版都给了同一句话：
+     *   v1.21.25 加了本地台账（fm891.myhist）→ 用户原话「这个功能没啥用」；
+     *   同版折叠列表已删，但台账和行首 ✓ 徽章当时留着（想着分得清谁点的），
+     *   用户随后确认「徽章也一起摘」。
+     * 所以现在是干净的：台账写入/查询（histNote / histHas）、列表壳子、
+     * 「再点一次」、✓ 徽章四处全无。老用户 localStorage 里可能还压着一份
+     * 台账，顺手清掉，别留一个再也没人读的死键。 */
+    try { localStorage.removeItem('fm891.myhist'); } catch (_) { /* 忽略 */ }
 
     function stLabel(it, i) {
       // 云开播正放到这条 → 正在播（air 的 id 就是点播条目的 id）
@@ -1240,10 +1188,10 @@
      * 一条能占 3~4 行高，列表一长，点歌前得先滚过去。 */
     function buildRow(it, i) {
       const li = document.createElement('li');
-      /* 「我点过的」双判定（v1.21.25）：本机 cid 认得出的单 + 本地台账里
-       * 点过的歌名 —— 换一批/快照替换/重启都冲不掉（台账存 localStorage）。 */
-      const mineTagged = isOwnReq(it) || histHas(it.title);
-      li.className = 'req-item' + (mineTagged ? ' mine' : '');
+      /* 「我自己的单」：只认本机 cid（快照恢复回来的也认，见 isOwnReq）。
+       * v1.21.29 把本地台账拿掉了，所以这里不再叠加「今天点过的歌名」那一判 ——
+       * 没有台账就没有那条判定，行也就不需要 ✓ 徽章去解释自己。 */
+      li.className = 'req-item' + (isOwnReq(it) ? ' mine' : '');
       const lab = stLabel(it, i);
       const body = document.createElement('span');
       body.className = 'req-body';
@@ -1260,12 +1208,6 @@
       /* 「谁点的 · 歌手」（v1.21.27 加歌手）：同名不同版本的歌，光看歌名
          分不清队里排的是哪一版；状态仍由右侧胶囊负责，不重复显示。 */
       meta.textContent = [it.who, it.artist].filter(Boolean).join(' · ');
-      if (mineTagged) {
-        const tag = document.createElement('b');
-        tag.className = 'mine-tag';
-        tag.textContent = '✓ 我点过的';
-        line2.appendChild(tag);
-      }
       line2.appendChild(meta);
       body.appendChild(line2);
       li.appendChild(body);
@@ -1435,7 +1377,9 @@
       reqList.scrollTop = _st;   // 还原（用户正在看的位置）
       if (_dlg) _dlg.scrollTop = _dST;
       renderSum(list);
-      renderHist();
+      /* v1.21.29：队列这一节只在真有行时露底（空的时候留个空框 = 更丑）。 */
+      const _qsec = document.getElementById('reqQueue');
+      if (_qsec) _qsec.hidden = !list.length;
       paintLive();
 
       /* 这一行只放「不看别处就不知道」的事：连接状态、空态解释。
