@@ -2603,6 +2603,15 @@ function wireUpdate() {
     if (updLastAt && Date.now() - updLastAt < 30 * 60 * 1000) return;
     checkUpdate(true);
   });
+  /* Android WebView 切后台/回前台**未必**派发 visibilitychange（它跟浏览器标签
+     不是一回事），再挂 focus / online 兜一层（同一个 30 分钟节流）：回前台、
+     断网恢复都补查一次。 */
+  ['focus', 'online'].forEach((ev) => {
+    window.addEventListener(ev, () => {
+      if (updLastAt && Date.now() - updLastAt < 30 * 60 * 1000) return;
+      checkUpdate(true);
+    });
+  });
 }
 wireUpdate();
 
