@@ -2429,7 +2429,7 @@ function currentVersion() {
       if (v) return v;
     }
   } catch (_) { /* 忽略 */ }
-  return '1.21.33'; // 网页版：与 manifest versionName 同步维护
+  return '1.21.34'; // 网页版：与 manifest versionName 同步维护
 }
 
 let updateUrl = '';
@@ -2656,12 +2656,16 @@ function setWaveEnv(body) {
   waveEnvStart = s > 0 ? s : 0;
 }
 
-/** 第 t 秒那一拍的响度（0~1）。没曲线 / 越界都返回 0。 */
+/** 第 t 秒那一拍的响度。返回 [0,1]；**没有曲线时返回 -1**。
+ *  这个 -1 是必须的：wave-gate 实测抓到，如果把「没数据」和「这一拍真的没声」
+ *  都返回 0，调用方分不开 —— 安静段落被当成没数据去满振幅兜底，结果**越安静
+ *  越鼓**，正好跟用户要的「跟着旋律连绵起伏」反着来。 */
 function envAt(t) {
-  if (!waveEnv || t < 0) return 0;
+  if (!waveEnv || t < 0) return -1;
   const p = t * ENV_HZ;
   const i = Math.floor(p);
-  if (i < 0 || i >= waveEnv.length) return 0;
+  if (i < 0) return -1;
+  if (i >= waveEnv.length) return 0;   // 过了片尾：按静音处理（平线）
   let a = waveEnv.charCodeAt(i) - 33;
   if (a < 0) a = 0; else if (a > 93) a = 93;
   if (i + 1 >= waveEnv.length) return a / 93;
@@ -2735,12 +2739,14 @@ function waveFrame(ts) {
     /* 这首播到第几秒 → 去曲线里取那一拍的响度。startedAt 是服务端的墙钟，
      * 进度条怎么算位置，波浪就怎么算位置（同一个 airProgress 数据源）。
      * 取不到曲线就用满振幅回落，绝不因为没数据就不动。 */
-    let lvl = 0;
+    let lvl = -1;                       // -1 = 拿不到曲线（真没数据）
     if (waveEnv && waveEnvStart > 0 && waveEnvDur > 0) {
       const pos = (Date.now() - waveEnvStart) / 1000;
       if (pos >= 0 && pos <= waveEnvDur + 1) lvl = envAt(pos);
     }
-    waveAmpTarget = lvl > 0 ? Math.max(1.5, lvl * WAVE_AMP_MAX) : WAVE_AMP_MAX;
+    /* 只有**真拿不到曲线**才回落满振幅（老成片）。曲线里写着 0 的那一拍就是
+     * 这首歌真安静 —— 那时候该是平线，不许兜底成最大。 */
+    waveAmpTarget = lvl >= 0 ? Math.max(1.2, lvl * WAVE_AMP_MAX) : WAVE_AMP_MAX;
   } else {
     waveAmpTarget = WAVE_REST;
   }
