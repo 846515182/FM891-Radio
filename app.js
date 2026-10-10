@@ -2428,17 +2428,64 @@ function currentVersion() {
       if (v) return v;
     }
   } catch (_) { /* 忽略 */ }
-  return '1.21.31'; // 网页版：与 manifest versionName 同步维护
+  return '1.21.32'; // 网页版：与 manifest versionName 同步维护
 }
 
 let updateUrl = '';
 
-async function checkUpdate(silent) {
-  if (!silent) toast('正在检查更新…');
+/* v1.21.32 查更新改成「两路 + 自动补查」—— 用户原话「app没收到更新」。
+ ① 主路还是 GitHub API（带 assets 和更新说明，最准）；
+   ② 拿不到（限流 / 网络不通）就问**自己的电台** /latest.json —— 服务器每
+     小时拉一份放那儿，电台本来就连得上，等于给更新多开一条永远通的路；
+   ③ 静默查失败别干等 6 小时：1/2/3 分钟各补查一次；
+   ④ 切回前台补查一次（30 分钟节流）。App 常是一开挂一天，只靠「启动 6s +
+      每 6h」，发版后几小时内根本不会弹。 */
+let updRetry = 0;
+let updLastAt = 0;
+
+function stationOrigin() {
+  try {
+    if (window.__radio && typeof window.__radio.origin === 'function') {
+      const o = window.__radio.origin();
+      if (o) return String(o);
+    }
+  } catch (_) { /* 忽略 */ }
+  try {
+    if (streamTunnel) return new URL(streamTunnel).origin;
+    if (airInfo && airInfo.url) return new URL(String(airInfo.url)).origin;
+  } catch (_) { /* 忽略 */ }
+  return '';
+}
+
+async function fetchLatest() {
+  let rel = null;
   try {
     const res = await fetch(UPDATE_API, { cache: 'no-store' });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const rel = await res.json();
+    if (res.ok) rel = await res.json();
+  } catch (_) { rel = null; }
+  if (rel && rel.tag_name) return rel;
+  // GitHub 这路不通 → 问自己的电台（服务端 latest_json_loop 写的兜底源）
+  const org = stationOrigin();
+  if (!org) throw new Error('拿不到最新版本（网络不通）');
+  const res2 = await fetch(org + '/latest.json', { cache: 'no-store' });
+  if (!res2.ok) throw new Error('HTTP ' + res2.status);
+  const j = await res2.json();
+  if (!j || !j.tag) throw new Error('兜底源没有版本号');
+  return {
+    tag_name: String(j.tag),
+    name: j.name || j.tag,
+    body: j.body || '',
+    html_url: j.url || '',
+    assets: j.apk ? [{ name: 'FM891.apk', browser_download_url: j.apk }] : []
+  };
+}
+
+async function checkUpdate(silent) {
+  updLastAt = Date.now();
+  if (!silent) toast('正在检查更新…');
+  try {
+    const rel = await fetchLatest();
+    updRetry = 0;
     const remote = String(rel.tag_name || '');
     const cur = currentVersion();
     if (!remote || !isNewer(remote, cur)) {
@@ -2464,6 +2511,13 @@ async function checkUpdate(silent) {
       toast('发现新版本 ' + remote);
     }
   } catch (e) {
+    if (silent && updRetry < 3) {
+      // 一次网络抖动就干等 6 小时，正是「发了版 App 却一直不弹」的常见
+      // 原因 —— 1/2/3 分钟各补查一次，三轮都失败才安静下来。
+      updRetry += 1;
+      setTimeout(() => checkUpdate(true), 60000 * updRetry);
+      return;
+    }
     if (!silent) toast('检查更新失败：' + (e && e.message ? e.message : '网络问题'));
   }
 }
@@ -2542,6 +2596,13 @@ function wireUpdate() {
     setTimeout(() => checkUpdate(true), 6000);
     setInterval(() => checkUpdate(true), 6 * 3600 * 1000);
   }
+  /* v1.21.32：切回前台补查一次（30 分钟节流）。发版时 App 早就开着的话，
+     「启动 6s + 每 6h」这两条都赶不上 —— 用户原话「app没收到更新」。 */
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    if (updLastAt && Date.now() - updLastAt < 30 * 60 * 1000) return;
+    checkUpdate(true);
+  });
 }
 wireUpdate();
 
