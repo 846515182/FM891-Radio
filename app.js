@@ -1572,6 +1572,7 @@ function renderAirBar() {
 function onAir(body) {
   if (!body || typeof body !== 'object' || !body.url) return;
   airInfo = body;
+  setWaveEnv(body);    // v1.21.33：这首的真实响度曲线 → 中间那条波浪跟着走
   /* 服务器回发的流地址优先（换 IP / 换隧道都不用发版）：
    * - body.stream 是直连地址（首选）
    * - body.url 是成片地址，取其 origin 推导隧道备用流 */
@@ -2428,7 +2429,7 @@ function currentVersion() {
       if (v) return v;
     }
   } catch (_) { /* 忽略 */ }
-  return '1.21.32'; // 网页版：与 manifest versionName 同步维护
+  return '1.21.33'; // 网页版：与 manifest versionName 同步维护
 }
 
 let updateUrl = '';
@@ -2615,40 +2616,69 @@ function wireUpdate() {
 }
 wireUpdate();
 
-/* ============================ 波浪动效（v1.21.30） ============================
- * 用户原话：「app界面那个圆的音乐旋律动画可以改成那种一条线的波浪开花样子吗」
- *           「那个波浪动画做牛逼一点」。
+/* ==================== 波浪动效（v1.21.30 起，v1.21.33 大改） ====================
+ * 用户原话（v1.21.33）：「那个波浪线丑的要死 我记得应该是一条横线 然后跟着这个
+ *   歌曲的旋律 连绵起伏的那种感觉」。
  *
- * 形状 = 三条正弦叠加 + **中间鼓、两头收的包络**。包络是「开花」的关键：
- * 少了它就是一条两端硬切的抖动直线；有了它，线从两端收进 0、在中间鼓起来，
- * 看着是从中间「开」出去的一朵。
- * 主线上再压两道相位错开的残影（更细、更淡、带模糊）—— 静止时是三层叠影，
- * 动起来才有纵深，这是「牛逼」的那一半。
+ * 也就是说：**静止时是一条平的横线**，一播放就跟着**这首歌真实的声音**起伏。
+ * 老版是三条正弦按固定速度自己飘（振幅只在「暂停 8 / 播放 32」之间跳），跟歌
+ * 零关系 —— 用户看着假，因为它确实是假的。
  *
- * 播放时振幅涨、走得快；暂停时振幅缓缓摊平。开关还是原来那组柱子用的
- * `body.playing`，行为不回退。
+ * 真实数据从哪来：服务端在烤片时就把这首的响度曲线算好（server.py 的 env_of，
+ * 20 点/秒），随 air 消息的 `env` 字段发下来。
  *
- * **不碰 AudioContext**：这套流是跨域的，createMediaElementSource 一旦接上，
- * 部分 WebView 会直接把声音掐掉 —— 画个动画把电台听没了，不划算。
+ * 为什么不自己用 AudioContext 抓：这套流是跨域的，createMediaElementSource
+ * 一旦接上，部分 WebView 会**直接把声音掐掉**，而且接上就回不去 —— 画个动画
+ * 把电台听没了，不划算。数据从服务器来，客户端一个字节的音频都不碰。
  *
- * v1.21.31：圆盘撤了、左栏也删了，全站**只剩中间这一条**（#coverWave）。
- * viewBox 仍是 0 0 320 96、preserveAspectRatio=none，一帧仍只算 3 条曲线；
- * 振幅上限由 22 抬到 32、流速 2.6 抬到 3.2（容器从圆盘变成了通栏波浪条，
- * 霓虹辉光在 style.css 末尾「v1.21.31 中间大重排」那段）。 */
+ * env 的格式：一串 ASCII，每点一个字符，chr(33+level)，level 0~93。
+ * 没有 env（老成片 / 服务器没算出来）就回落老的「自己飘」，行为不回退。 */
 const WAVE_W = 320;      // viewBox 宽（两点定曲线的横坐标范围）
-const WAVE_MID = 48;     // viewBox 高的一半 = 静止时那条线的高度
+const WAVE_MID = 48;     // viewBox 高的一半 = 静止时那条横线的高度
 const WAVE_N = 44;       // 采样点：够顺，又不至于让老机子掉帧
 const WAVE_X = [];       // x 坐标预存成字符串，避免每帧重复 toFixed
 for (let wi = 0; wi <= WAVE_N; wi++) WAVE_X.push(((wi / WAVE_N) * WAVE_W).toFixed(1));
 
-/** amp 振幅 / phase 相位 / freq 频率 → 一条 path 的 d。 */
+const WAVE_REST = 0.5;   // 静止振幅：近乎平的一条线（用户要的「一条横线」）
+const WAVE_AMP_MAX = 24; // 播放时振幅上限（中线 48、viewBox 高 96，留够又不撞边）
+const ENV_HZ = 20;       // 服务端 env 的采样率，两边必须一致
+
+let waveEnv = '';        // 当前这首的响度曲线（一串 ASCII，没曲线就是空串）
+let waveEnvDur = 0;      // 这首的时长（秒）：越界就不取了
+let waveEnvStart = 0;    // 开播时刻（ms），跟 airProgress 同源
+
+/** air 换一首就换一条线。body 缺失时清空（回落老的自己飘）。 */
+function setWaveEnv(body) {
+  waveEnv = (body && body.env) ? String(body.env) : '';
+  const d = Number(body && body.dur) || 0;
+  const s = Number(body && body.startedAt) || 0;
+  waveEnvDur = d > 0 ? d : 0;
+  waveEnvStart = s > 0 ? s : 0;
+}
+
+/** 第 t 秒那一拍的响度（0~1）。没曲线 / 越界都返回 0。 */
+function envAt(t) {
+  if (!waveEnv || t < 0) return 0;
+  const p = t * ENV_HZ;
+  const i = Math.floor(p);
+  if (i < 0 || i >= waveEnv.length) return 0;
+  let a = waveEnv.charCodeAt(i) - 33;
+  if (a < 0) a = 0; else if (a > 93) a = 93;
+  if (i + 1 >= waveEnv.length) return a / 93;
+  let b = waveEnv.charCodeAt(i + 1) - 33;
+  if (b < 0) b = 0; else if (b > 93) b = 93;
+  const v = (a + (b - a) * (p - i)) / 93;
+  return v < 0 ? 0 : (v > 1 ? 1 : v);
+}
+
+/** amp 振幅 / phase 相位 / freq 频率 → 一条 path 的 d。
+ *  v1.21.33：不再做「中间鼓两头收」的开花包络 —— 那是上一版被用户否掉的样子，
+ *  现在整条线一样粗细，就是「一条横线」，起伏完全由音乐的响度决定。 */
 function waveD(amp, phase, freq) {
   let d = '';
   for (let i = 0; i <= WAVE_N; i++) {
     const x = i / WAVE_N;
-    /* 包络 sin(pi x)^1.15：两端归零、中间最鼓 —— 这就是「开花」的形状 */
-    const env = Math.pow(Math.sin(Math.PI * x), 1.15);
-    const y = WAVE_MID + env * amp * (
+    const y = WAVE_MID + amp * (
         Math.sin(x * 6.2831853 * freq + phase)
       + Math.sin(x * 6.2831853 * freq * 2.3 + phase * 1.7) * 0.34
       + Math.sin(x * 6.2831853 * freq * 0.55 - phase * 0.9) * 0.55);
@@ -2658,8 +2688,8 @@ function waveD(amp, phase, freq) {
 }
 
 let waveT = 0;             // 相位随时间往前走（就是「波在流」）
-let waveAmp = 8;           // 当前振幅：向目标平滑逼近，避免一开播就「啪」地弹开
-let waveAmpTarget = 8;
+let waveAmp = WAVE_REST;   // 当前振幅：向目标平滑逼近，开播/暂停都不许有跳变
+let waveAmpTarget = WAVE_REST;
 let waveLast = 0;
 let wavePaths = null;      // [{main, g1, g2}]，算一次缓存起来
 
@@ -2701,10 +2731,22 @@ function waveFrame(ts) {
   let playing = false;
   try { playing = !!(document.body && document.body.classList
                      && document.body.classList.contains('playing')); } catch (_) { /* 忽略 */ }
-  waveAmpTarget = playing ? 32 : 8;
-  /* 平滑逼近：振幅 3.2/s 的速度靠过来，开播与暂停都不会有跳变 */
-  waveAmp += (waveAmpTarget - waveAmp) * Math.min(1, dt * 3.2);
-  waveT += dt * (playing ? 3.2 : 0.95);
+  if (playing) {
+    /* 这首播到第几秒 → 去曲线里取那一拍的响度。startedAt 是服务端的墙钟，
+     * 进度条怎么算位置，波浪就怎么算位置（同一个 airProgress 数据源）。
+     * 取不到曲线就用满振幅回落，绝不因为没数据就不动。 */
+    let lvl = 0;
+    if (waveEnv && waveEnvStart > 0 && waveEnvDur > 0) {
+      const pos = (Date.now() - waveEnvStart) / 1000;
+      if (pos >= 0 && pos <= waveEnvDur + 1) lvl = envAt(pos);
+    }
+    waveAmpTarget = lvl > 0 ? Math.max(1.5, lvl * WAVE_AMP_MAX) : WAVE_AMP_MAX;
+  } else {
+    waveAmpTarget = WAVE_REST;
+  }
+  /* 平滑逼近：曲线 20 拍/秒，这里 6/s 的速度贴上去，既跟得上又不抖 */
+  waveAmp += (waveAmpTarget - waveAmp) * Math.min(1, dt * 6);
+  waveT += dt * (playing ? 3.2 : 0.2);
   drawWave();
   if (typeof requestAnimationFrame === 'function') requestAnimationFrame(waveFrame);
 }
@@ -2712,7 +2754,8 @@ function waveFrame(ts) {
 /** 开画：先静态落一帧（门禁与截图要读得到 d），有 rAF 再进动画循环。 */
 function startWave() {
   wavePaths = collectWaves();
-  waveAmp = 8;
+  waveAmp = WAVE_REST;
+  waveAmpTarget = WAVE_REST;
   waveT = 0.35;
   drawWave();
   if (typeof requestAnimationFrame !== 'function') return;   // 沙箱里没有 rAF：画一帧就收，不挂定时器

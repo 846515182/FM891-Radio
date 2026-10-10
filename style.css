@@ -2539,9 +2539,10 @@ body.track-change #cover {
 #cover .status { top: 7px; left: 9px; }
 
 /* —— ③ 波浪容器：铺满条子，纵向留足鼓包的空间 ——
-   振幅上限由 app.js 的 waveAmpTarget 定（播放 32 / 暂停 8），viewBox 仍是
-   0 0 320 96：三条正弦叠加的峰值系数约 1.6，32 × 1.6 ≈ 51，落在 48±48 里
-   只探出头一点点，那点溢出交给 overflow:visible。 */
+   振幅上限由 app.js 的 waveAmpTarget 定（v1.21.33：静止 0.5 ≈ 一条平线，
+   播放时按这首歌的真实响度在 1.5~24 之间走），viewBox 仍是 0 0 320 96：
+   三条正弦叠加的峰值系数约 1.6，24 × 1.6 ≈ 38，落在 48±48 里很宽松，
+   那点溢出交给 overflow:visible。 */
 .wave {
   left: 3%;
   right: 3%;
