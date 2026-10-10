@@ -33,37 +33,21 @@
     </header>
 
     <section class="player" aria-label="播放器">
-      <!-- v1.21.30 左栏重做（用户原话「把那个左边的排队改为那个波浪 下面从右往左
-           滚动字母多好 那个波浪动画做牛逼一点」）：
-           上面一条和圆盘同款的横向波浪（做宽做亮），下面一条**从右往左滚的字幕**，
-           滚的内容就是排队（歌名 + 谁点的）—— 一个位置同时保住「好看」和「我第几位」。
-           原来那张 <ol> 列表删掉，队列数据改由 app.js 拼成字幕条。 -->
-      <aside class="queue-rail" id="queueRail" hidden aria-label="排队">
-        <div class="rail-wave" id="railWave" aria-hidden="true">
-          <svg class="wave-svg" viewBox="0 0 320 96" preserveAspectRatio="none">
-            <defs>
-              <linearGradient id="wGradRail" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0%" stop-color="#22d3ee" />
-                <stop offset="50%" stop-color="#a78bfa" />
-                <stop offset="100%" stop-color="#f472b6" />
-              </linearGradient>
-            </defs>
-            <path class="wave-ghost g1" />
-            <path class="wave-ghost g2" />
-            <path class="wave-main" />
-          </svg>
-        </div>
-        <div class="rail-tick" id="railTick">
-          <div class="rail-tick-track" id="railTickTrack"></div>
-        </div>
-        <p class="queue-rail-empty" id="queueRailEmpty">还没人排队</p>
-      </aside>
+      <!-- v1.21.31 中间重排（用户原话「中间那个大头像怎么还在 太丑了」「中间改成一条波浪线 滚动歌曲列表放波浪正下方」）：
+           ① 左边那条排队栏（queueRail 容器 + 波浪条 + 第二条渐变）整块删除
+              —— 全站只剩一条波浪；
+           ② 中间大头像（黑胶盘 .cover-ring / 音符 .note / 均衡器 .eq）一并撤掉，
+              原位置改成**一条通栏横向霓虹波浪**（#cover 现在是波浪条，不是圆盘）；
+           ③ 排队字幕轨搬到**波浪正下方**的 .stage-tick，id 全部沿用
+              queueRail / railTick / railTickTrack / queueRailEmpty ——
+              app.js 的 renderUpNext 一字未改。 -->
 
       <div class="stage">
         <div class="cover" id="cover">
-          <!-- 用 <img> 而不是 CSS background：实测这套 WebView 里
-               file:// 的 background-image 不渲染（同一张图走 <img> 正常），
-               而 background 方案一旦不画，封面就只剩一个空盒子。 -->
+          <!-- v1.21.31：大头像整块撤掉，这里不再是「圆盘封面」，而是一条
+               通栏的横向波浪条。#cover 的形态（全宽 / 18px 圆角 /
+               overflow:visible 让辉光外溢）收口在 style.css 末尾
+               「v1.21.31 中间大重排」那段覆盖。 -->
           <!-- v1.21.19：首页大头像换成音乐波形。主播照片撤掉，
                封面中央是一组随歌变色、播放时跳动的波形柱 —— 电台该有的样子。 -->
           <!-- v1.21.30：圆盘里那组柱状波形换成**一条横向波浪线**（开花的样子）。
@@ -86,11 +70,15 @@
             </svg>
           </div>
           <span class="status" id="status">正在接通直播…</span>
-          <div class="cover-ring" aria-hidden="true"></div>
-          <svg class="note" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
-          </svg>
-          <div class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+        </div>
+
+        <!-- 排队字幕轨：紧跟波浪下沿，一条从右往左滚的字幕（序号 · 歌名 ·
+             谁点的）。整节默认 hidden，没队列时 renderUpNext 会把它藏起来。 -->
+        <div class="stage-tick" id="queueRail" hidden aria-label="排队">
+          <div class="rail-tick" id="railTick">
+            <div class="rail-tick-track" id="railTickTrack"></div>
+          </div>
+          <p class="queue-rail-empty" id="queueRailEmpty">还没人排队</p>
         </div>
 
         <h1 id="stationName">时光电台</h1>

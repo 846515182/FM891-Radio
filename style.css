@@ -180,90 +180,6 @@ body {
 .status.loading { background: rgba(250, 204, 21, 0.92); color: #3b2f04; font-weight: 700; border-color: rgba(255, 255, 255, 0.35); }
 .status.error { background: rgba(244, 63, 94, 0.92); color: #fff; font-weight: 700; border-color: rgba(255, 255, 255, 0.3); }
 
-/* 黑胶唱片封面环 */
-.cover-ring {
-  position: absolute;
-  /* inset: 13% 展开 —— 这套 WebView 不认 inset 简写（Chrome 87+），整条会作废 */
-  top: 13%;
-  right: 13%;
-  bottom: 13%;
-  left: 13%;
-  border-radius: 50%;
-  background:
-    repeating-radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.06) 0 1px, transparent 1px 6px),
-    radial-gradient(circle at 50% 50%, #241a4a 0 30%, #150e30 31% 72%, #100a24 100%);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.55), 0 14px 30px rgba(0, 0, 0, 0.35);
-}
-
-.cover-ring::after {
-  content: '';
-  position: absolute;
-  /* inset: 31% 展开 —— 这套 WebView 不认 inset 简写（Chrome 87+），整条会作废 */
-  top: 31%;
-  right: 31%;
-  bottom: 31%;
-  left: 31%;
-  border-radius: 50%;
-  background: var(--grad);
-  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.25), 0 4px 14px rgba(0, 0, 0, 0.4);
-}
-
-body.playing .cover-ring { animation: spin 7s linear infinite; }
-
-@keyframes spin { to { transform: rotate(360deg); } }
-
-.note {
-  position: relative;
-  z-index: 2;
-  width: 52px;
-  height: 52px;
-  fill: rgba(255, 255, 255, 0.96);
-  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.35));
-  pointer-events: none;
-}
-
-.eq {
-  position: absolute;
-  bottom: 14px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 3;
-  display: flex;
-  align-items: flex-end;
-  gap: 5px;
-  height: 44px;
-  padding: 7px 14px;
-  border-radius: 999px;
-  background: rgba(8, 4, 20, 0.45);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-}
-
-.eq i {
-  width: 6px;
-  height: 8px;
-  border-radius: 3px;
-  background: rgba(255, 255, 255, 0.95);
-}
-
-.eq i:nth-child(2) { height: 16px; }
-.eq i:nth-child(3) { height: 24px; }
-.eq i:nth-child(4) { height: 14px; }
-.eq i:nth-child(5) { height: 10px; }
-
-body.playing .eq i { animation: bounce 0.9s ease-in-out infinite; }
-body.playing .eq i:nth-child(2) { animation-delay: 0.15s; }
-body.playing .eq i:nth-child(3) { animation-delay: 0.3s; }
-body.playing .eq i:nth-child(4) { animation-delay: 0.45s; }
-body.playing .eq i:nth-child(5) { animation-delay: 0.6s; }
-
-@keyframes bounce {
-  0%, 100% { height: 8px; }
-  50% { height: 32px; }
-}
-
 .stage h1 {
   margin: 20px 0 6px;
   font-size: 24px;
@@ -1131,38 +1047,6 @@ body.playing .stage h1 {
   border-radius: 20px;
 }
 .status { top: 8px; left: 8px; font-size: 10px; padding: 4px 8px; }
-.note { width: 34px; height: 34px; }
-.eq {
-  bottom: 9px;
-  gap: 4px;
-  height: 30px;
-  padding: 5px 11px;
-}
-.eq i {
-  width: 5px;
-  height: 6px;
-  background: linear-gradient(180deg, #22d3ee, #a78bfa);
-  box-shadow: 0 0 6px rgba(34, 211, 238, 0.55);
-}
-.eq i:nth-child(2) { height: 12px; }
-.eq i:nth-child(3) { height: 18px; }
-.eq i:nth-child(4) { height: 10px; }
-.eq i:nth-child(5) { height: 8px; }
-
-/* 封面叠一层扫描线（CRT 仪表感），pointer-events:none 不挡点击 */
-.cover::after {
-  content: '';
-  position: absolute;
-  /* inset: 0 展开 —— 这套 WebView 不认 inset 简写（Chrome 87+），整条会作废 */
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  z-index: 4;
-  background: repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.055) 0 1px, transparent 1px 4px);
-  pointer-events: none;
-}
-
 /* —— ① 压紧：文案区（播报字幕最长留 3 行，全文仍在 DOM 里）—— */
 .stage h1 { margin: 10px 0 3px; font-size: 20px; }
 .stage .desc {
@@ -1218,11 +1102,6 @@ footer { margin-top: 14px; }
   0%, 100% { text-shadow: 0 2px 22px rgba(34, 211, 238, 0.35); }
   50% { text-shadow: 0 2px 30px rgba(167, 139, 250, 0.7); }
 }
-@keyframes bounce {
-  0%, 100% { height: 6px; }
-  50% { height: 22px; }
-}
-
 /* ============ v1.20.2 · 正在播放做实 + 接下来列表 ============
  * 用户原话：「歌曲播放和点歌流程很难看，要么不醒目要么很隐蔽」。
  * 改法：把「此刻在放」做成真正的主角（封面/歌名放大、状态更醒目），
@@ -1516,30 +1395,6 @@ footer { margin-top: 14px; }
 
 .stage { grid-area: stage; }
 
-/* —— 左边透明排队栏（v1.21.30 重做）——
-   上面一条横向波浪，下面一条**从右往左滚的字幕**，滚的就是排队。
-   用户原话：「把那个左边的排队改为那个波浪 下面从右往左 滚动字母多好
-   那个波浪动画做牛逼一点」。原来那张竖排列表的样式整段换成这两块。 */
-.queue-rail {
-  grid-area: queue;
-  position: sticky;
-  top: 8px;
-  padding-top: 6px;
-  /* 透明：直接浮在电台背景上，不要卡片框 */
-  background: none;
-  border: 0;
-  box-shadow: none;
-}
-
-.queue-rail[hidden] { display: none !important; }
-
-/* 波浪条：给固定高度，SVG 用 preserveAspectRatio=none 铺满这一格 */
-.rail-wave {
-  height: 44px;
-  margin-bottom: 7px;
-  filter: drop-shadow(0 0 7px rgba(34, 211, 238, .4));
-}
-
 /* 滚动字幕：外层裁、轨道宽内容，transform 从 0 平移到 -50% 循环（见 app.js） */
 .rail-tick {
   overflow: hidden;
@@ -1636,33 +1491,6 @@ footer { margin-top: 14px; }
 
 .queue-rail-empty[hidden] { display: none !important; }
 
-/* 屏幕太窄就把排队栏收到下面去（保底不挤掉正在播放）；字幕本来就横向滚，
-   收到下面反而更长更好看，不用像旧列表那样改 flex-direction。 */
-@media (max-width: 320px) {
-  .player { grid-template-columns: 1fr; grid-template-areas: 'stage' 'queue'; }
-  .queue-rail { position: static; }
-}
-
-/* —— v1.20.8：封面换成主播本人（桌面 Image_1790835436625_528），圆形 ——
-   原来那个渐变方块 + 音符图标太「App 模板」，用户点名要换成这张图。
-   圆形用 border-radius 裁，不做带透明通道的圆图（省一份资源）。 */
-.cover {
-  border-radius: 50%;
-  background: #120d2c url("icons/dj-avatar.png") center / cover no-repeat;
-  box-shadow:
-    0 18px 44px rgba(139, 92, 246, .42),
-    0 0 0 2px rgba(34, 211, 238, .3),
-    0 0 34px rgba(236, 72, 152, .22);
-}
-
-/* 圆形封面里那道 HUD 扫描线留着（仪表感），但别盖住脸 */
-.cover::after {
-  background: repeating-linear-gradient(180deg, rgba(255, 255, 255, .04) 0 1px, transparent 1px 5px);
-}
-
-/* 音符占位图标：有了真人头像就藏掉，别叠在脸上 */
-.cover .note { display: none; }
-
 /* —— v1.20.8：点歌分环节进度条 ——
    用户：「点歌每个环节显示进度」。以前只有一行字（下载中 3/5 MB），
    不知道卡在哪一步。六个环节各一个节点，走到哪亮到哪，`.now` 是当前步。 */
@@ -1726,37 +1554,10 @@ footer { margin-top: 14px; }
 
 .dj-bubble:active { transform: scale(0.985); }
 
-/* —— 封面：真圆形 + 别让黑胶盘盖住主播的脸 ——
-   原来里面有个旋转的黑胶圆盘（.cover-ring），换成真人头像之后它就是「一张
-   唱片压在脸上」，必须撤掉。 */
-#cover {
-  border-radius: 50% !important;
-  background: #120d2c url("icons/dj-avatar.png") center / cover no-repeat !important;
-  box-shadow:
-    0 16px 40px rgba(139, 92, 246, .4),
-    0 0 0 2px rgba(34, 211, 238, .3),
-    0 0 30px rgba(236, 72, 152, .2) !important;
-}
-
-#cover .cover-ring,
-#cover .note { display: none !important; }
-
-/* 圆形封面里的状态角标跟着改成小药丸，贴在右上而不是压在脸上 */
-#cover .status {
-  top: -6px;
-  left: 50%;
-  transform: translateX(-50%);
-  border-radius: 999px;
-}
-
 /* —— v1.20.8 修：左栏被长曲名顶宽了 ——
    grid 列写死 84px，但 .q-main b 是 flex 子项，最小内容宽度会把列撑开
    （截图里「听妈妈的…」压到右边、第 5 条被裁掉）。列宽用 minmax(0, 84px)
    锁死，歌名再长也只在栏内省略号。 */
-.player { grid-template-columns: minmax(0, 84px) minmax(0, 1fr); }
-
-.queue-rail { min-width: 0; overflow: hidden; }
-
 /* =====================================================================
    v1.20.8 修二：布局没铺满 + 待播列表压到附言上
    用户原话：「待播列表 和那个附言重叠了你没发现吗 这些内容尺寸手机都没铺满啊」
@@ -1771,21 +1572,6 @@ footer { margin-top: 14px; }
   padding: 12px 10px 12px;
   column-gap: 10px;
   grid-template-columns: minmax(0, 96px) minmax(0, 1fr);
-}
-
-/* 左栏：不许溢出 —— align-self:start 让它按内容高度收缩，
-   max-height + overflow 保证再长也不会压到右栏的附言上 */
-.queue-rail {
-  align-self: start;
-  max-height: 100%;
-  overflow: hidden;
-}
-
-/* 封面：放大到几乎占满右栏，手机屏就用起来了 */
-#cover {
-  width: 100%;
-  max-width: 208px;
-  margin: 0 auto;
 }
 
 /* 标题 / 歌手 / 附言：跟着放大一档，铺满右栏宽度 */
@@ -1805,10 +1591,6 @@ footer { margin-top: 14px; }
 
 /* 左栏字幕字号已在 .rail-tick 那段定好（旧列表的 .q-main b / .q-state 已随
    <ol> 一起删除），这里不再补一套。 */
-
-/* 封面里的均衡器动效条压在脸上（圆形头像一放大就很明显）。状态已经由封面
-   顶部那颗「直播中」徽章说明了，这条动效条撤掉，别毁了这张图。 */
-#cover .eq { display: none !important; }
 
 /* =====================================================================
    v1.20.9：改名「时光电台」+ 一屏铺满不滚动 + 丝滑过渡
@@ -1841,17 +1623,6 @@ body { overscroll-behavior-y: none; }
   flex-direction: column;
   justify-content: center;
   min-height: 0;
-}
-
-/* 封面吃到剩余高度：不用死 px，窗口多高它就长多高（上限 40vh） */
-#cover {
-  width: auto;
-  height: min(38vh, 260px);
-  max-width: 100%;
-  aspect-ratio: 1;
-  margin: 6px auto 0;
-  transition: transform .45s cubic-bezier(.22, .9, .3, 1),
-              box-shadow .45s ease;
 }
 
 /* 封面换成另一首时轻微缩放一下，视觉上有「切歌」的动作 */
@@ -1890,12 +1661,7 @@ footer { flex: none; margin-top: 10px; }
   border-radius: 8px;
 }
 
-/* 排队栏进场：波浪与字幕整块淡入。条目级的「逐条浮现」（qIn）已随那张 <ol>
-   删除 —— 字幕是横向滚的，条目再从左边一条条推进来，会跟滚动方向打架。 */
-.queue-rail:not([hidden]) .rail-wave,
-.queue-rail:not([hidden]) .rail-tick {
-  animation: railIn .34s var(--ease) both;
-}
+
 
 @keyframes railIn {
   from { opacity: 0; transform: translateY(-6px); }
@@ -1957,31 +1723,6 @@ footer { flex: none; margin-top: 10px; }
    ===================================================================== */
 :root { --cover-hue: 265; }
 
-/* 封面外圈：两圈随歌变化的光环，慢转 —— 「在呼吸」的视觉来源 */
-#cover::before {
-  content: '';
-  position: absolute;
-  /* inset: -7px 展开 —— 这套 WebView 不认 inset 简写（Chrome 87+），整条会作废 */
-  top: -7px;
-  right: -7px;
-  bottom: -7px;
-  left: -7px;
-  border-radius: 50%;
-  background: conic-gradient(from 0deg,
-    hsl(var(--cover-hue) 85% 62% / .55),
-    hsl(calc(var(--cover-hue) + 42) 85% 62% / .18),
-    hsl(calc(var(--cover-hue) - 34) 85% 62% / .5),
-    hsl(var(--cover-hue) 85% 62% / .55));
-  filter: blur(7px);
-  opacity: .85;
-  z-index: -1;
-  animation: hueSpin 14s linear infinite;
-  transition: background .8s var(--ease);
-  pointer-events: none;
-}
-
-@keyframes hueSpin { to { transform: rotate(360deg); } }
-
 #cover {
   box-shadow:
     0 16px 40px hsl(var(--cover-hue) 70% 45% / .40),
@@ -2030,10 +1771,6 @@ footer { flex: none; margin-top: 10px; }
 /* 换歌瞬间封面轻微一缩，视觉上「切了一刀」 */
 body.track-change #cover { transform: scale(.93); }
 
-@media (prefers-reduced-motion: reduce) {
-  #cover::before { animation: none; }
-}
-
 /* track-change 由 JS 加上后不主动移除（避免在 VOD 播放块里塞 setTimeout），
    改用「短动画 + forwards 不保持」的写法：class 留着也会自己弹回原状。 */
 body.track-change #cover {
@@ -2054,30 +1791,7 @@ body.track-change #cover {
    光环收窄。窄屏另外再降一档。
    ===================================================================== */
 
-/* 封面：min(高度, 宽度) 两个都限死，宽高自动保持 1:1 */
-#cover {
-  height: min(30vh, 300px);
-  width: auto;
-  max-width: 100%;
-  max-height: 30vh;
-  aspect-ratio: 1;
-}
-
-/* 光环别伸出去那么多 */
-#cover::before { top: -4px; right: -4px; bottom: -4px; left: -4px; filter: blur(5px); }
-
-/* 排队栏永远压在封面上层，不被压住 */
-.queue-rail {
-  position: relative;
-  z-index: 3;
-}
-
 .player .stage { z-index: 1; }
-
-/* 窄屏（排队栏 + 封面挤在一起的那种）封面再收一档 */
-@media (max-width: 380px), (max-height: 680px) {
-  #cover { height: min(24vh, 168px); max-height: 24vh; }
-}
 
 /* =====================================================================
    v1.21.30：主播性格的选择器（.mood-row / .mood / .mood-lb / .req-more）
@@ -2089,101 +1803,7 @@ body.track-change #cover {
    报不出当前选了什么」的补丁，跟着一起删 —— 没有按钮，也就没有塌不塌。
    ===================================================================== */
 
-/* =====================================================================
-   v1.21.2 修二：封面还是太大，排队列表被压住
-   用户原话：「中间你那个头像还是很大 排队哪个列表被覆盖了」。
-   前一版只把封面调到 min(30vh,300px) + 排队栏 z-index:3 —— 层叠上不压了，
-   但**尺寸还是压**：300px 的圆在 360px 宽的屏上、光环再外扩一圈，左边缘就啃到
-   排队栏，条目右半被盖（截图：第 1 条右边缘贴着封面白圆）。
-   这次两件事一起做：
-     1) 封面按**列宽**封顶（不只是屏高）—— 排队栏 + 封面必须同屏不打架；
-     2) 封面右移到舞台正中、排队栏留出安全间距（gap 加大），不再靠 z-index 硬压。
-   ===================================================================== */
-.player {
-  column-gap: 12px;
-  grid-template-columns: minmax(0, 104px) minmax(0, 1fr);
-}
-
-#cover {
-  /* 两个上限取小的那个：屏高 30%、列宽 78%。列宽才是「会不会压到排队栏」的决定因素。
-     只给 width（两个上限都是确定值：% 相对列宽、vh 相对视口），高度交给
-     aspect-ratio —— **不要**写 height: min(30vh, 78%)，那个 78% 相对父容器
-     高度，而父容器高度由内容决定，是循环依赖（浏览器会解析成 0，封面消失）。 */
-  width: auto;
-  max-width: 78%;
-  max-height: 30vh;
-  aspect-ratio: 1;
-  margin: 6px auto 0;
-}
-
-#cover::before { top: -3px; right: -3px; bottom: -3px; left: -3px; filter: blur(4px); }
-
-.queue-rail { padding-top: 2px; }
-
 /* 极窄屏：排队栏缩到 88px，封面再让一步 */
-@media (max-width: 340px) {
-  .player { grid-template-columns: minmax(0, 88px) minmax(0, 1fr); }
-  #cover { max-width: 72%; }
-}
-
-/* —— v1.21.2 修三：封面被我上一条写没了 ——
-   错在哪：`height: min(30vh, 78%)` 里的 78% 是相对**父容器高度**，而父容器
-   （.stage）高度由内容决定 —— 循环依赖，浏览器解析成 0，封面整个消失
-   （截图：歌名左边只剩一个小紫点）。
-   正确写法：只给 width，两个上限都是确定值（78% 相对列宽、30vh 相对视口），
-   高度交给 aspect-ratio 推。
-   同理 max-width/max-height 里的百分比也一并去掉，别再引入循环。 */
-#cover {
-  width: min(78%, 30vh);
-  height: auto;
-  aspect-ratio: 1;
-  max-width: none;
-  max-height: none;
-  margin: 6px auto 0;
-}
-
-@media (max-width: 340px) {
-  #cover { width: min(72%, 26vh); }
-}
-
-/* —— v1.21.2 修四（终）：封面靠右对齐，排队栏靠左 —— 结构上不可能再撞 ——
-   前面几版都在「调尺寸」上打转（30vh → 28vh → min(78%,30vh)…），可封面
-   是居中的：它在 stage 里居中 = 左边必然往排队栏那边溢出多少，全看列宽差多少。
-   只要居中，两者就有「可能相撞」的关系。
-   改成右对齐（margin-left:auto），封面左边 = stage 右边缘 − 封面宽，永远在
-   排队栏右边留够空间。不用再赌尺寸了。
-   ------------------------------------------------------------------ */
-#cover {
-  margin: 6px 0 0 auto;      /* 靠右，别居中 */
-  width: min(72%, 26vh);
-}
-
-/* ============ 封面尺寸 · 根因修复（v1.21.5） ============
-   中间那片空洞查了三层才到底，两个坑叠在一起：
-
-   1) 这台机器的 WebView（Android 30 / Chrome ~90）**不支持 aspect-ratio** ——
-      实测 getComputedStyle(el).aspectRatio === undefined。
-      所以「给 width 再用 aspect-ratio 自动算高」这条路从一开始就是死的，
-      高度只剩 0，封面塌成一条看不见的线。
-
-   2) height 里写百分比会形成**循环依赖**：72% 相对父容器 .stage 的高度，
-      而 .stage 的高度又由内容（含这个封面）撑起 —— 浏览器解不出这个环，
-      按规范直接解析成 0。
-      （同一条教训上面的注释里已经写过一次，这次 width 里又带了 %，
-       属于「读过自己写的警告却没拦住」，所以在此钉死。）
-
-   唯一干净解：两维都用纯 vh、flex:none 不参与压缩、靠右对齐。
-   width 用 min(vh, 100%) 是安全的 —— 它相对父**宽**，而父宽来自 grid 列宽，
-   不依赖高度，不构成环。
-   ------------------------------------------------------- */
-#cover {
-  flex: none;                        /* 别被 column-flex 压到 0 */
-  width: min(26vh, 100%);            /* 宽可被容器收，但不牵扯高度 */
-  height: 26vh;                      /* 纯 vh：没有 % 、也不依赖 aspect-ratio */
-  margin: 6px 0 0 auto;              /* 靠右：结构上不与左侧排队栏相撞 */
-  aspect-ratio: 1;                   /* 支持它的浏览器顺带用；不支持就忽略 */
-}
-
 /* ============ v1.21.5 视觉返工 · ① 撤掉卡角的「科技角标」 ============
    用户反馈界面上有两个来路不明的青色空方框。查明是 .player::before/::after：
    16px 见方、两道 1.5px 描边加辉光，本意是取景框的角，但它俩悬在卡片的
@@ -2191,39 +1811,6 @@ body.track-change #cover {
    没有区别。撤掉。 */
 .player::before,
 .player::after { content: none !important; display: none !important; }
-
-/* ============ ② 排队栏：从「浮着的裸条目」改成一张正经侧卡 ============
-   原来没有卡底、条目各画各的框、也没有高度上限 —— stage 横跨两列，排队栏
-   是 z-index:3 浮在它上面的，条目一多就会往下长到标题那一行压住文案。
-   现在：统一卡底 + 左侧青色引导线；高度封顶在封面那一段（封面恒为 26vh），
-   多出来的在栏内自己滚，排多少首都越不了界。 */
-.queue-rail {
-  padding: 7px 6px 6px;
-  max-height: calc(26vh + 2px);      /* 与封面等高：再多一条就撞到下面的标题 */
-  overflow: hidden;
-  border-radius: 14px;
-  background: linear-gradient(180deg, rgba(34, 211, 238, 0.07), rgba(255, 255, 255, 0.03));
-  border: 1px solid rgba(34, 211, 238, 0.18);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
-}
-/* v1.21.30：表头 .queue-rail-h / 列表 .queue-rail-list / 条目 .q-item 随那张
-   <ol> 一起删了 —— 左栏现在是「波浪 + 从右往左滚的字幕」，样式在文件前面
-   「左边透明排队栏」那段。卡底、圆角、青色描边（.queue-rail 本身）保留，
-   波浪就画在这张卡里。 */
-/* 侧栏加宽 8px：卡底和内边距吃掉了一截，歌名要留够字宽才不会挤折行 */
-.player { grid-template-columns: minmax(0, 112px) minmax(0, 1fr); }
-
-/* ============ ③ 封面加三道环：把圆形轮廓「勾」出来 ============
-   光一张图贴在深底上没有形；深色留白环 + 青色细环 + 紫色外环把边界定死，
-   右上角那颗「直播中」胶囊才不会像浮在空中。 */
-#cover {
-  border: 3px solid rgba(255, 255, 255, 0.12);
-  box-shadow:
-    0 0 0 1px rgba(34, 211, 238, 0.55),
-    0 0 0 5px rgba(16, 11, 38, 0.95),
-    0 0 0 6.5px rgba(167, 139, 250, 0.4),
-    0 18px 46px rgba(139, 92, 246, 0.45) !important;
-}
 
 /* ============ ④ 播报文案框：border-image 的锅 ============
    原规则写了 border-left: 3px solid transparent + border-image: linear-
@@ -2586,6 +2173,14 @@ body.track-change #cover {
   margin: 2px 2px 10px;
   font-size: 12px;
   color: var(--muted);
+}
+
+/* v1.21.31 修断链：上面这条 .req-hint 少了收尾大括号（代码里一直在，
+   老版本也有）。后果很坑：这一行往下的**所有**规则都被 CSS Nesting 当成
+   .req-hint 的嵌套规则，一条都没生效 —— 包括 #cover 的那块「抹掉大头像」
+   背景（大头像因此还在）、.wave / .wave-svg 的定位、点歌弹窗后半段的全套
+   样式。把大括号补上，它们才重新生效。 */
+
 /* 换一批版本：与「稍后再说」同级的次要按钮 */
 .cand-more {
   flex: none;
@@ -2661,21 +2256,6 @@ body.track-change #cover {
 .wave .wave-ghost { stroke-width: 1.6; opacity: .5; }
 .wave .wave-ghost.g1 { filter: blur(1.4px); opacity: .55; }
 .wave .wave-ghost.g2 { filter: blur(2.4px); opacity: .34; }
-
-/* 左栏那条：同一份 path，换个渐变、细一点 —— 它是配角，别跟圆盘抢眼。
-   容器不是 .wave 的后代，所以要单独写一条（两条选择器互不相干）。 */
-.rail-wave .wave-main,
-.rail-wave .wave-ghost {
-  fill: none;
-  stroke: url(#wGradRail);
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.rail-wave .wave-main { stroke-width: 3; filter: drop-shadow(0 0 5px rgba(34, 211, 238, .55)); }
-.rail-wave .wave-ghost { stroke-width: 1.4; }
-.rail-wave .wave-ghost.g1 { opacity: .5; filter: blur(1.2px); }
-.rail-wave .wave-ghost.g2 { opacity: .3; filter: blur(2px); }
 
 /* 减少动效偏好：波浪停在静态那一帧（画是画好的，只是不再流） */
 @media (prefers-reduced-motion: reduce) {
@@ -2911,3 +2491,95 @@ body.track-change #cover {
 .req-line2 .req-meta { flex: 0 1 auto; min-width: 60px; }
 .req-item .req-line2 .req-candchip,
 .req-item .req-line2 .req-waitpick { flex: none; margin-left: 0; }
+
+
+/* =====================================================================
+   v1.21.31 中间大重排 —— 大头像撤掉，中间只剩一条通栏霓虹波浪
+   用户原话：「中间那个大头像怎么还在」「太丑了你这个中间搞一个这么丑的头像」
+            「中间改成一条波浪线 滚动歌曲列表放波浪正下方」「左栏排队整块删」。
+   三件事一次做完：
+     ① 左边那条排队栏（queueRail 容器 / 波浪 / 第二条渐变）整块删除 ——
+        全站只剩一条波浪；
+     ② 中间大头像（黑胶盘 .cover-ring / 音符 .note / 均衡器 .eq / HUD 扫描线 /
+        旋转光环）连同圆盘那套尺寸一起删掉，#cover 改写成**通栏横向波浪条**；
+     ③ 排队字幕轨从左栏搬到**波浪正下方**（.stage-tick），id 一个没改，
+        所以 app.js 的 renderUpNext 一字未动。
+   老规矩：能删的死规则已在上面删干净，新结构在这里收口覆盖。
+   ===================================================================== */
+
+/* —— ① 播放器回到单列：左边没有排队栏了，stage 独占一行 —— */
+.player {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'stage';
+  column-gap: 0;
+}
+
+/* —— ② #cover：圆盘 → 通栏波浪条 ——
+   圆盘那一整套（border-radius:50% / dj-avatar 背景 / 三道环 / 旋转光环 ::before /
+   扫描线 ::after / 均衡器）已在上面删干净。这里只定形态：
+     · 全宽 + 18px 圆角 = 一条横过整卡的「舞台」；
+     · overflow:visible —— 波峰和霓虹辉光允许溢出条外（裁掉就不是霓虹了）；
+     · 背景与外发光仍吃后面那段随歌变色的规则（--cover-hue），不另起一套。 */
+#cover {
+  display: block;
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  height: 140px;
+  max-height: none;
+  aspect-ratio: auto;
+  margin: 4px 0 0;
+  flex: none;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 18px;
+  overflow: visible;
+}
+
+/* 状态药丸（「直播中」）回到条子左上角：波浪两端本来就收细，压不着字 */
+#cover .status { top: 7px; left: 9px; }
+
+/* —— ③ 波浪容器：铺满条子，纵向留足鼓包的空间 ——
+   振幅上限由 app.js 的 waveAmpTarget 定（播放 32 / 暂停 8），viewBox 仍是
+   0 0 320 96：三条正弦叠加的峰值系数约 1.6，32 × 1.6 ≈ 51，落在 48±48 里
+   只探出头一点点，那点溢出交给 overflow:visible。 */
+.wave {
+  left: 3%;
+  right: 3%;
+  height: 76%;
+}
+
+/* —— ④ 霓虹：主线加粗 + 三道同色系外发光，残影加粗加糊做光晕 ——
+   用户原话「太丑了」。原来是单层紫色 drop-shadow，看着像根划上去的线；
+   现在主线 4.4px 并叠青/紫/粉三道外发光，残影加大模糊度当光晕，
+   才有「一根亮着的灯管」的质感。 */
+.wave .wave-main {
+  stroke-width: 4.4;
+  filter:
+    drop-shadow(0 0 4px rgba(34, 211, 238, .95))
+    drop-shadow(0 0 14px rgba(139, 92, 246, .75))
+    drop-shadow(0 0 30px rgba(236, 72, 152, .35));
+}
+
+.wave .wave-ghost { stroke-width: 2.6; opacity: .55; }
+.wave .wave-ghost.g1 { opacity: .6; filter: blur(2.4px); }
+.wave .wave-ghost.g2 { opacity: .42; filter: blur(4px); }
+
+/* —— ⑤ 排队字幕轨：紧跟波浪下沿，通栏宽 ——
+   id 没变（queueRail / railTick / railTickTrack / queueRailEmpty），
+   所以前面那套 .rail-tick 滚动样式原样接着用，只是它现在待在中间。 */
+.stage-tick {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  min-width: 0;
+  margin-top: 9px;
+}
+
+.stage-tick[hidden] { display: none !important; }
+.stage-tick:not([hidden]) .rail-tick { animation: railIn .34s var(--ease) both; }
+
+/* 通栏之后字宽富裕：歌名放长一截、字号抬一档，滚过去能一眼读完 */
+.stage-tick .rail-tick .q-no { font-size: 10.5px; }
+.stage-tick .rail-tick .q-t { font-size: 13px; max-width: 9em; }
+.stage-tick .rail-tick .q-who { font-size: 10.5px; }
+.stage-tick .queue-rail-empty { font-size: 10.5px; }

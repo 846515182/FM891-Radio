@@ -1741,10 +1741,10 @@ function renderNowPlaying(j) {
  * 垫场在后）。刚备好的点歌会被插到下一首 —— 就是在这里冒出来的。
  * 单曲模式下不显示：那会儿耳朵里是单曲，混着电台歌单只会更乱。 */
 function renderUpNext(list) {
-  /* v1.21.30 左栏重做（用户原话「把那个左边的排队改为那个波浪 下面从右往左
-   * 滚动字母多好」）：左边栏 = 上面一条横向波浪 + 下面一条**从右往左滚的字幕**，
-   * 滚的内容就是排队（序号 · 歌名 · 谁点的）—— 一个位置同时保住「好看」和
-   * 「我第几位」。原来那张 <ol> 列表删了，队列数据在这里拼成字幕条。
+  /* v1.21.31 排队字幕搬到**波浪正下方**（用户原话「音律波浪线放在头像那一块
+   * 滚动歌曲列表在音律波浪线下面」）：本体还是那条**从右往左滚的字幕**
+   * （序号 · 歌名 · 谁点的），只是容器从左栏那一节换成了 .stage-tick，
+   * 位置正好压在中间那条波浪的下沿。id 一个没改，所以这段逻辑不用动。
    * 「从右往左」不靠 JS 挪位置：轨道里的内容重复两份，CSS transform 从 0
    * 平移到 -50% 循环，掉帧也不会跳。 */
   const box = $('queueRail');
@@ -2561,8 +2561,10 @@ wireUpdate();
  * **不碰 AudioContext**：这套流是跨域的，createMediaElementSource 一旦接上，
  * 部分 WebView 会直接把声音掐掉 —— 画个动画把电台听没了，不划算。
  *
- * 两个位置（圆盘里那条 + 左栏那条）用**同一份 path**：两者 viewBox 相同、
- * 都是 preserveAspectRatio=none，算一次套两处，一帧只算 3 条曲线而不是 6 条。 */
+ * v1.21.31：圆盘撤了、左栏也删了，全站**只剩中间这一条**（#coverWave）。
+ * viewBox 仍是 0 0 320 96、preserveAspectRatio=none，一帧仍只算 3 条曲线；
+ * 振幅上限由 22 抬到 32、流速 2.6 抬到 3.2（容器从圆盘变成了通栏波浪条，
+ * 霓虹辉光在 style.css 末尾「v1.21.31 中间大重排」那段）。 */
 const WAVE_W = 320;      // viewBox 宽（两点定曲线的横坐标范围）
 const WAVE_MID = 48;     // viewBox 高的一半 = 静止时那条线的高度
 const WAVE_N = 44;       // 采样点：够顺，又不至于让老机子掉帧
@@ -2586,8 +2588,8 @@ function waveD(amp, phase, freq) {
 }
 
 let waveT = 0;             // 相位随时间往前走（就是「波在流」）
-let waveAmp = 5;           // 当前振幅：向目标平滑逼近，避免一开播就「啪」地弹开
-let waveAmpTarget = 5;
+let waveAmp = 8;           // 当前振幅：向目标平滑逼近，避免一开播就「啪」地弹开
+let waveAmpTarget = 8;
 let waveLast = 0;
 let wavePaths = null;      // [{main, g1, g2}]，算一次缓存起来
 
@@ -2629,10 +2631,10 @@ function waveFrame(ts) {
   let playing = false;
   try { playing = !!(document.body && document.body.classList
                      && document.body.classList.contains('playing')); } catch (_) { /* 忽略 */ }
-  waveAmpTarget = playing ? 22 : 5;
+  waveAmpTarget = playing ? 32 : 8;
   /* 平滑逼近：振幅 3.2/s 的速度靠过来，开播与暂停都不会有跳变 */
   waveAmp += (waveAmpTarget - waveAmp) * Math.min(1, dt * 3.2);
-  waveT += dt * (playing ? 2.6 : 0.9);
+  waveT += dt * (playing ? 3.2 : 0.95);
   drawWave();
   if (typeof requestAnimationFrame === 'function') requestAnimationFrame(waveFrame);
 }
@@ -2640,7 +2642,7 @@ function waveFrame(ts) {
 /** 开画：先静态落一帧（门禁与截图要读得到 d），有 rAF 再进动画循环。 */
 function startWave() {
   wavePaths = collectWaves();
-  waveAmp = 5;
+  waveAmp = 8;
   waveT = 0.35;
   drawWave();
   if (typeof requestAnimationFrame !== 'function') return;   // 沙箱里没有 rAF：画一帧就收，不挂定时器
