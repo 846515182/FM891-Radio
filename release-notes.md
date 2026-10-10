@@ -1,3 +1,65 @@
+# 时光电台 v1.21.31
+
+一句话：**中间那块大头像归撤掉，改成一条通栏霓虹波浪；排队字幕搬到波浪正下方；**
+左栏排队整块删除。顺带修好一条一直没生效的老 CSS。
+
+## 一、中间大重排
+
+**用户原话**：「中间那个大头像怎么还在 大丑了」、「中间改成一条波浪线
+滚动歌曲列表在音律波浪线下面」、「太丑了你这个中间」。
+
+- `#cover`：168×168 圆盘 → **140px 高的通栏横向波浪条**（`border-radius:18px`、
+  `aspect-ratio:auto`、`overflow:visible`、单列 grid `stage`），里面只剩 `#coverWave`
+  一条 SVG 波浪 + 左上角状态药丸；
+- 撤掉 `.cover-ring`（黑胶盘）、`.note`（音符）、`.eq`（均衡器）及其动画
+  `spin` / `hueSpin` / `bounce`×2、三道环、HUD 扫描线；
+- **霓虹发光**：`#coverWave .wave-main` 描边提到 4.4，叠青/紫/粉三道
+  `drop-shadow`；两道 ghost 用 `g1 blur(2.4px)` / `g2 blur(4px)`；
+- **振幅夸张**：静止档 5→8、播放档 22→32，流速 2.6→3.2（三正弦叠加峰值
+  系数 ≈1.6，32×1.6≈51 落在 viewBox 0..96 的 48±48 内，少量溢出交给
+  `overflow:visible`）。
+
+## 二、排队字幕搬到波浪正下方
+
+**用户原话**：「滚动歌曲列表在音律波浪线下面」。
+
+- 左栏 `<aside id="queueRail">` 整块删除（含 `railWave`、第二条渐变 `wGradRail`、
+  那张 `<ol>` 列表）—— 全站只剩一条波浪；
+- `#cover` 后、`<h1 id="stationName">` 前插入 `<div class="stage-tick" id="queueRail">`
+  （内含 `railTick` / `railTickTrack` / `queueRailEmpty`），**id 全部沿用 →
+  `renderUpNext` 一字未改**；
+- 空队列照旧整块隐藏；字号收紧（q-no/q-who 10.5px、q-t 13px 且
+  `max-width:9em`）压在波浪下沿。
+
+## 三、修好 `.req-hint` 丢的收尾大括号（真·老 bug）
+
+- `style.css` 里 `.req-hint {` 一直少一个 `结尾大括号`（HEAD 就有，不是这次改坏的）。
+- 后果：这一行往下的**所有**规则被 CSS Nesting 当成 `.req-hint` 的嵌套
+  规则，**一条都没生效** —— 包括 v1.21.30 那块「抹掉大头像」的 `#cover`
+  背景（**大头像因此一直还在**）、`.wave` / `.wave-svg` 的定位、
+  点歌弹窗后半段全套样式；
+- 补上大括号后＊括号平衡扫描 depth 1→0，三道门禁全绿。
+
+## 四、门禁与号码
+
+- `v1212-ui-test.js` **146/0**、`layout-gate.py` **42/0**、`verify-apk4.py` **60/0**
+  （本轮未动服务端，server gate 跳过）；
+- layout-gate 探针 `railWave`→`coverWave`，断言改为「通栏一条、高度 ≤130px、
+  不是大圆盘」；
+- verify-apk4「新样式已进包」改精确匹配：死选择器只在**真规则**里反钉，
+  注释里提 `.cover-ring` / `.rail-wave` 不算；
+- `versionCode 62 → 63`，`versionName 1.21.30 → 1.21.31`，`sw.js` CACHE
+  `fm891-v70 → fm891-v71`，`currentVersion()` 同步。
+
+## 五、运维：《吹喇叭》整首下线（不在包里，仅记录）
+
+- 4 个 id `purge` + 仓库键 `forget_repo`，再清掉那条**还没播的** 13 秒口播
+  （“小陈点的《吹喇叭》正在路上”）；
+- `songs/` 里 6 份吹喇叭音频全删（2 份成片随 purge 删、1 份仓库源、
+  3 份孤儿），释放 18.6 MB；留言墙 `wall/73` 那条历史保留（是记录不是播放）。
+
+---
+
 # 时光电台 v1.21.30
 
 一句话：**按用户新一轮 7 条反馈改客户端** —— 搜索下面的框删掉、性格选择器摘掉、

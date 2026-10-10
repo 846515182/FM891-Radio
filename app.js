@@ -2428,7 +2428,7 @@ function currentVersion() {
       if (v) return v;
     }
   } catch (_) { /* 忽略 */ }
-  return '1.21.30'; // 网页版：与 manifest versionName 同步维护
+  return '1.21.31'; // 网页版：与 manifest versionName 同步维护
 }
 
 let updateUrl = '';
