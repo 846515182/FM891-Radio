@@ -296,58 +296,93 @@ body.playing .eq i:nth-child(5) { animation-delay: 0.6s; }
 
 /* ---------- 播放控制 ---------- */
 
-/* ---------- 音量 ---------- */
+/* ---------- 音量（v1.21.30：滑杆 → −／＋ 两颗按钮） ---------- */
+/* 用户原话「那个音量控制滑动很容易误碰 改成两个按钮加减音量」。
+   病根是**热区**：滑杆横跨大半屏，手指一扫过去就改了音量。现在只剩两颗
+   42px 的圆钮，误碰最多把音量挪一格（±10%，见 app.js stepVolume）。
+   中间那截是**纯展示**（5 段分段条 + 百分比），根本没有可点区域，碰不坏。 */
 .volume {
   display: flex;
   align-items: center;
-  gap: 12px;
+  justify-content: center;
   margin-top: 24px;
   padding: 0 6px;
+  /* 不写 gap：这套 WebView 低于 Chrome 84，flex gap 不生效（见文件后面那条
+     v1.21.7 兜底）。按钮与中间展示区之间一律用显式 margin，两个内核表现一致。 */
 }
 
-.volume svg { width: 20px; height: 20px; fill: var(--muted); flex: none; }
-
-.volume input[type="range"] {
-  flex: 1;
-  height: 26px;
-  margin: 0;
-  appearance: none;
-  -webkit-appearance: none;
-  background: transparent;
-  accent-color: var(--accent2);
+.vol-btn {
+  flex: none;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text);
+  font: inherit;
+  font-size: 23px;
+  line-height: 1;
+  font-weight: 700;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.32);
+  transition: background 0.16s var(--ease), transform 0.1s var(--ease);
 }
 
-.volume input[type="range"]::-webkit-slider-runnable-track {
-  height: 8px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.14);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+.vol-btn:active {
+  transform: scale(0.9);
+  transition-duration: 0.06s;
+  background: rgba(139, 92, 246, 0.45);
 }
 
-.volume input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 20px;
+.vol-btn:focus-visible {
+  outline: 2px solid var(--accent2);
+  outline-offset: 2px;
+}
+
+/* 分段条：5 段，亮几段由 app.js paintVolume 按百分比算（这段越亮越是大声）。
+   注意：这套 WebView 低于 Chrome 84，flex 的 gap 不生效 —— 这里的 3px 是
+   .vol-meter i + i 的 margin（见下面那条），不是 gap。 */
+.vol-meter {
+  display: flex;
+  align-items: flex-end;
+  flex: none;
   height: 20px;
-  margin-top: -7px;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.65), 0 4px 12px rgba(0, 0, 0, 0.4);
+  margin: 0 12px;      /* 这一行顺带把「按钮贴着分段条」的 12px 也补上（gap 失效时） */
 }
 
-.volume input[type="range"]::-moz-range-track {
-  height: 8px;
-  border-radius: 999px;
+.vol-meter i {
+  display: block;
+  width: 7px;
+  border-radius: 2px;
   background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: background 0.18s var(--ease), box-shadow 0.18s var(--ease);
 }
 
-.volume input[type="range"]::-moz-range-thumb {
-  width: 18px;
-  height: 18px;
-  border: none;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.65);
+.vol-meter i + i { margin-left: 3px; }
+
+.vol-meter i:nth-child(1) { height: 7px; }
+.vol-meter i:nth-child(2) { height: 10px; }
+.vol-meter i:nth-child(3) { height: 13px; }
+.vol-meter i:nth-child(4) { height: 16px; }
+.vol-meter i:nth-child(5) { height: 19px; }
+
+.vol-meter i.on {
+  background: linear-gradient(180deg, #22d3ee, #8b5cf6);
+  border-color: rgba(255, 255, 255, 0.24);
+  box-shadow: 0 0 7px rgba(34, 211, 238, 0.55);
+}
+
+/* 百分比数字：等宽，按下去会跳 —— 但它本身是 span，点不中 */
+.vol-num {
+  min-width: 2.6em;
+  margin-right: 12px;      /* 与右侧「＋」的间距（gap 在这台 WebView 不生效） */
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---------- 分类切换条（887 路台单先按节目类型分栏，否则一条胶囊滑不到头） ---------- */
@@ -494,16 +529,18 @@ footer {
 
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 
-/* ---------- 更新 ---------- */
-.link-btn {
+/* ---------- 更新 ----------
+   v1.21.30：底部那颗「检查更新」按钮删了（用户原话「更新应该是自动弹出，
+   底部不用显示 检查更新」）。检查改成纯自动（启动 6 秒 + 每 6 小时静默查一次，
+   有新版直接弹「发现新版本」），页脚只留一个**不可点的**纯文本版号 ——
+   排错时看得见版本，但没有热区，自然也没有什么可误碰的。 */
+.ver-plain {
+  display: inline-block;
   margin-top: 8px;
-  border: none;
-  background: none;
-  color: rgba(199, 189, 240, 0.9);
-  font: inherit;
   font-size: 11px;
-  cursor: pointer;
-  text-decoration: underline dotted;
+  color: rgba(199, 189, 240, 0.55);
+  letter-spacing: 0.4px;
+  font-variant-numeric: tabular-nums;
 }
 
 /* —— v1.20.7 点歌台：别再是个居中大框，改成贴底抽屉 ——
@@ -767,41 +804,10 @@ footer {
   flex-direction: column;
 }
 
-/* —— v1.20.7：曲库速点改成**单行横滑**，不换行 ———
-   换行的话 10 个标签要占 3 行（约 150px），把搜索框和「点歌」挤到屏幕外，
-   「那个框」显得又高又烦。横滑只占一行，两边还能看出还有更多。 */
-.req-chips {
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 6px;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-  padding: 2px 0 4px;
-  margin: 0 -16px;
-  padding-left: 16px;
-  padding-right: 16px;
-}
-.req-chips::-webkit-scrollbar { display: none; }
-
-/* —— v1.20.7：「送给谁 / 祝福语」折起来 ——
-   绝大多数人只是点一首歌就走，两个输入框常驻纯属占地方。 */
-.req-more { margin-top: 2px; }
-
-.req-more > summary {
-  list-style: none;
-  cursor: pointer;
-  padding: 7px 2px;
-  font-size: 12px;
-  color: var(--muted);
-  user-select: none;
-}
-
-.req-more > summary::-webkit-details-marker { display: none; }
-
-.req-more[open] > summary { color: var(--text); }
-
-.req-more > input { margin-bottom: 8px; }
+/* v1.21.30：这里原来是「曲库常听 chips（单行横滑）」和「更多 · 主播性格」
+   两个折叠块，两块一起删 —— 用户原话「点歌搜索下面那个框有啥用 里面显示歌曲
+   感觉没啥用 删掉相关代码」「主播性格感觉也没啥用…用户app 可以选有啥用」。
+   .req-chips / .chip / .req-more / .mood* 的样式一并在下面几处清掉。 */
 
 /* 竖排四件套：歌名 / 送给谁 / 祝福语 / 提交 */
 .req-form { display: flex; flex-direction: column; gap: 8px; margin: 0 0 8px; }
@@ -1048,61 +1054,12 @@ footer {
   white-space: nowrap;
 }
 
-/* —— 点歌台：联想下拉 —— */
+/* —— 点歌台：输入框外壳 ——
+   v1.21.30：联想面板（.ac-panel/.ac-list/.ac-item/.ac-foot…）与曲库常听
+   （.req-chips/.chip）整块删除，只剩这个包住输入框的定位 wrapper。
+   它是 .req-compose-row 里的 flex 子项，抽掉会改变输入框和「点歌」按钮的
+   排布，所以**留着**。 */
 .ac-wrap { position: relative; }
-.ac-list {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: calc(100% + 4px);
-  z-index: 6;
-  margin: 0;
-  padding: 6px;
-  list-style: none;
-  max-height: 190px;
-  overflow-y: auto;
-  background: #161031;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 12px;
-  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.5);
-}
-.ac-list[hidden] { display: none; }
-.ac-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  cursor: pointer;
-}
-.ac-item:active { background: rgba(139, 92, 246, 0.3); }
-.ac-item em { font-style: normal; font-size: 13px; font-weight: 700; color: #f3eeff; }
-.ac-artist { flex: none; font-size: 11px; color: var(--muted); }
-
-/* —— 点歌台：曲库速点 chips（覆盖表单按钮的通栏样式）—— */
-.req-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.req-chips[hidden] { display: none; }
-.req-form .chip,
-.chip {
-  width: auto !important;
-  margin: 0 !important;
-  padding: 5px 11px !important;
-  font-size: 12px !important;
-  font-weight: 700 !important;
-  color: #ddd3ff !important;
-  background: rgba(139, 92, 246, 0.16) !important;
-  border: 1px solid rgba(167, 139, 250, 0.4) !important;
-  border-radius: 999px !important;
-  transform: none !important;
-}
-.chip:active { background: rgba(139, 92, 246, 0.4) !important; }
-
-/* —— 点歌台：祝福语 + AI 按钮同行 —— */
 
 /* —— 点歌台：排队摘要（第几位轮到我）—— */
 .req-sum {
@@ -1222,12 +1179,12 @@ body.playing .stage h1 {
 .meta-chip { padding: 3px 9px; }
 
 /* —— ① 压紧：音量 / 点歌气泡 / 进度行 / 页脚 —— */
-.volume { margin-top: 12px; gap: 10px; }
-.volume input[type="range"] { height: 22px; }
+.volume { margin-top: 12px; }
 .dj-bubble { margin-top: 10px; padding: 8px 11px; }
 .vod-row { margin-top: 10px; }
 footer { margin-top: 14px; }
-.link-btn { margin-top: 6px; }.vod-time,.req-no,.upd-pct{
+.ver-plain { margin-top: 6px; }
+.vod-time,.req-no,.upd-pct{
   font-family: "SFMono-Regular", "Roboto Mono", Consolas, "Liberation Mono", monospace;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.5px;
@@ -1492,9 +1449,8 @@ footer { margin-top: 14px; }
 .req-item .req-st { padding-right: 30px; }
 .req-x[hidden] { display: none; }
 
-/* 排队栏「找歌中」条目：压暗区分 —— 还没备好，别让人误以为马上播 */
-.q-item.wait { opacity: .62; }
-.q-item.wait .q-state { color: rgba(251, 191, 36, .95); }
+/* 排队栏「找歌中」条目：压暗区分 —— 还没备好，别让人误以为马上播。
+   v1.21.30 列表换成滚动字幕后，这条落在 .rail-tick .q-seg.wait（见左栏那段）。 */
 
 /* =====================================================================
    v1.20.8 —— 主界面重排（用户：「曲库删掉 在线人数也删掉 开播中也删掉
@@ -1560,7 +1516,10 @@ footer { margin-top: 14px; }
 
 .stage { grid-area: stage; }
 
-/* —— 左边透明排队栏 —— */
+/* —— 左边透明排队栏（v1.21.30 重做）——
+   上面一条横向波浪，下面一条**从右往左滚的字幕**，滚的就是排队。
+   用户原话：「把那个左边的排队改为那个波浪 下面从右往左 滚动字母多好
+   那个波浪动画做牛逼一点」。原来那张竖排列表的样式整段换成这两块。 */
 .queue-rail {
   grid-area: queue;
   position: sticky;
@@ -1574,87 +1533,97 @@ footer { margin-top: 14px; }
 
 .queue-rail[hidden] { display: none !important; }
 
-.queue-rail-h {
+/* 波浪条：给固定高度，SVG 用 preserveAspectRatio=none 铺满这一格 */
+.rail-wave {
+  height: 44px;
+  margin-bottom: 7px;
+  filter: drop-shadow(0 0 7px rgba(34, 211, 238, .4));
+}
+
+/* 滚动字幕：外层裁、轨道宽内容，transform 从 0 平移到 -50% 循环（见 app.js） */
+.rail-tick {
+  overflow: hidden;
+  width: 100%;
+}
+
+/* 轨道用 block 而不是 flex：这套 WebView 低于 Chrome 84，flex 的 gap 是「写了
+   等于没写」（文件别处那条 v1.21.7 兜底就是为这个），不给它留任何机会。 */
+.rail-tick-track {
+  display: block;
+  width: max-content;
+  white-space: nowrap;
+  animation: railTick 20s linear infinite;
+  will-change: transform;
+}
+
+/* 轨道里是完全相同的两份，-50% 正好回到起点 = 无缝 */
+@keyframes railTick {
+  from { transform: translate3d(0, 0, 0); }
+  to   { transform: translate3d(-50%, 0, 0); }
+}
+
+.rail-tick .q-unit {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.rail-tick .q-seg {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  padding-right: 9px;
+  vertical-align: middle;
+}
+
+/* 三段之间靠显式 margin 留白（gap 在这台 WebView 不生效，见上） */
+.rail-tick .q-no { flex: none; margin-right: 3px; }
+.rail-tick .q-t { flex: 1 1 auto; margin-right: 3px; }
+.rail-tick .q-who { flex: none; margin-right: 3px; }
+
+/* 段与段之间那颗小圆点（纯 CSS，不用往 DOM 里塞分隔符） */
+.rail-tick .q-seg::after {
+  content: '';
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .3);
+  margin-left: 6px;
+}
+
+.rail-tick .q-no {
   font-size: 9px;
   font-weight: 800;
-  letter-spacing: 1.6px;
-  color: rgba(34, 211, 238, .8);
-  padding-left: 2px;
-  margin-bottom: 6px;
-  text-align: center;
-}
-
-.queue-rail-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.q-item {
-  display: flex;
-  gap: 4px;
-  align-items: flex-start;
-  padding: 5px 5px 6px;
-  border-radius: 10px;
-  /* 半透明玻璃：看得见队列，又不糊住背景 */
-  background: rgba(255, 255, 255, .045);
-  border: 1px solid rgba(255, 255, 255, .07);
-}
-
-.q-item.lib { opacity: .6; border-style: dashed; }
-
-.q-no {
-  flex: none;
-  width: 13px;
-  height: 13px;
-  margin-top: 1px;
-  border-radius: 50%;
-  background: rgba(34, 211, 238, .18);
-  border: 1px solid rgba(34, 211, 238, .4);
   color: #67e8f9;
-  font-family: "SFMono-Regular", "Roboto Mono", Consolas, monospace;
-  font-size: 8.5px;
-  font-weight: 700;
-  line-height: 12px;
-  text-align: center;
+  font-variant-numeric: tabular-nums;
+  flex: none;
 }
 
-.q-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.q-main b {
+.rail-tick .q-t {
+  font-style: normal;
   font-size: 10.5px;
-  line-height: 1.25;
+  font-weight: 700;
   color: var(--text);
+  /* 别让一条长歌名独占整屏：超了就省略，后面几条照样滚得到 */
+  max-width: 5.5em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.q-artist {
-  font-size: 8.5px;
-  color: rgba(34, 211, 238, .8);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.q-state {
-  font-size: 8.5px;
+.rail-tick .q-who {
+  font-style: normal;
+  font-size: 9px;
   color: var(--muted);
-  opacity: .8;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
+  flex: none;
 }
+
+/* 「找歌中」最要紧，压过点歌人；还没备好的歌名稍微暗一点 */
+.rail-tick .q-seg.wait .q-t { opacity: .7; }
+.rail-tick .q-seg.wait .q-who { color: rgba(251, 191, 36, .9); }
 
 .queue-rail-empty {
   margin: 4px 0 0;
@@ -1667,15 +1636,11 @@ footer { margin-top: 14px; }
 
 .queue-rail-empty[hidden] { display: none !important; }
 
-/* 排队栏里的歌名/点歌人都用等宽数字，跟「台」的仪表感一致 */
-.q-no { font-variant-numeric: tabular-nums; }
-
-/* 屏幕太窄就把排队栏收成横条在下面（保底不挤掉正在播放） */
+/* 屏幕太窄就把排队栏收到下面去（保底不挤掉正在播放）；字幕本来就横向滚，
+   收到下面反而更长更好看，不用像旧列表那样改 flex-direction。 */
 @media (max-width: 320px) {
   .player { grid-template-columns: 1fr; grid-template-areas: 'stage' 'queue'; }
   .queue-rail { position: static; }
-  .queue-rail-list { flex-direction: row; overflow-x: auto; }
-  .q-item { min-width: 76px; }
 }
 
 /* —— v1.20.8：封面换成主播本人（桌面 Image_1790835436625_528），圆形 ——
@@ -1791,15 +1756,6 @@ footer { margin-top: 14px; }
 .player { grid-template-columns: minmax(0, 84px) minmax(0, 1fr); }
 
 .queue-rail { min-width: 0; overflow: hidden; }
-.queue-rail-list { min-width: 0; }
-
-.q-item { min-width: 0; }
-.q-item .q-main,
-.q-main { min-width: 0; overflow: hidden; }
-
-.q-main b,
-.q-artist,
-.q-state { max-width: 100%; }
 
 /* =====================================================================
    v1.20.8 修二：布局没铺满 + 待播列表压到附言上
@@ -1847,10 +1803,8 @@ footer { margin-top: 14px; }
 .stage .now-title { font-size: 17px; }
 .song-meta { margin-top: 8px; }
 
-/* 左栏条目：跟着加宽一点，歌名能多露两个字 */
-.q-main b { font-size: 11px; }
-.q-artist,
-.q-state { font-size: 8.5px; }
+/* 左栏字幕字号已在 .rail-tick 那段定好（旧列表的 .q-main b / .q-state 已随
+   <ol> 一起删除），这里不再补一套。 */
 
 /* 封面里的均衡器动效条压在脸上（圆形头像一放大就很明显）。状态已经由封面
    顶部那颗「直播中」徽章说明了，这条动效条撤掉，别毁了这张图。 */
@@ -1910,7 +1864,7 @@ footer { flex: none; margin-top: 10px; }
   --ease: cubic-bezier(.22, .9, .3, 1);
   --t-fast: .16s;
   --t-med: .26s;
-}.brand,.dj-bubble,.req-cand,.req-cand-ok,.chip,.volume input[type="range"]{
+}.brand,.dj-bubble,.req-cand,.req-cand-ok,.vol-btn{
   transition: transform var(--t-fast) var(--ease),
               box-shadow var(--t-med) var(--ease),
               background-color var(--t-fast) var(--ease),
@@ -1922,9 +1876,7 @@ footer { flex: none; margin-top: 10px; }
 .dj-bubble:active,
 .req-cand:active,
 .req-cand-ok:active,
-.chip:active,
 .dialog-x:active,
-.link-btn:active,
 .ghost:active,
 .primary:active {
   transform: scale(.965);
@@ -1938,15 +1890,16 @@ footer { flex: none; margin-top: 10px; }
   border-radius: 8px;
 }
 
-/* 排队条目逐条浮现（用 --i 做级联延迟，由 JS 写入） */
-.q-item {
-  animation: qIn .34s var(--ease) both;
-  animation-delay: calc(var(--i, 0) * 55ms);
+/* 排队栏进场：波浪与字幕整块淡入。条目级的「逐条浮现」（qIn）已随那张 <ol>
+   删除 —— 字幕是横向滚的，条目再从左边一条条推进来，会跟滚动方向打架。 */
+.queue-rail:not([hidden]) .rail-wave,
+.queue-rail:not([hidden]) .rail-tick {
+  animation: railIn .34s var(--ease) both;
 }
 
-@keyframes qIn {
-  from { opacity: 0; transform: translateX(-8px); }
-  to { opacity: 1; transform: translateX(0); }
+@keyframes railIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 /* 进度条平滑走而不是跳 */
@@ -1974,26 +1927,9 @@ footer { flex: none; margin-top: 10px; }
 /* 卡片撑满后内容别全顶在上头（底部空一大截很难看）：垂直居中，空白均分上下 */
 .player { align-content: center; }
 
-/* —— v1.20.9 修：曲库速点必须真的单行横滑 ——
-   v1.20.7 那条 nowrap 写在文件中间，被后面一条旧的 `flex-wrap: wrap` 覆盖掉了，
-   截图上还是两行（把「点歌」按钮和折叠区都挤下去了）。这次放在文件末尾并
-   加 !important，谁都盖不住它。 */
-.req-chips {
-  display: flex !important;
-  flex-wrap: nowrap !important;
-  flex-direction: row !important;
-  gap: 6px;
-  overflow-x: auto !important;
-  overflow-y: hidden;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-  max-width: 100%;
-  margin: 0 -16px;
-  padding: 2px 16px 4px;
-}
-
-.req-chips::-webkit-scrollbar { display: none; }
-.req-chips .chip { flex: none !important; white-space: nowrap; }
+/* —— v1.21.30：上面这整段「曲库速点必须真的单行横滑」（.req-chips / .chip）
+   已随常听 chips 一起删除。左栏那条从右往左滚的字幕才是现在的横滑主体，
+   它的样式在文件前面「左边透明排队栏」那段。 —— */
 
 /* —— v1.20.9 修（重要）：点歌条目里的进度条/候选区被挤成一团 ——
    .req-item 是 flex 容器但没开 wrap，我给进度条写了 flex-basis:100%（意图换行），
@@ -2144,87 +2080,14 @@ body.track-change #cover {
 }
 
 /* =====================================================================
-   创意②（补）：主播性格三选一 —— 用户自己选，不替他决定
+   v1.21.30：主播性格的选择器（.mood-row / .mood / .mood-lb / .req-more）
+   整块删除 —— 用户原话「主播性格 感觉也没啥用…这个不应该服务端默认的吗
+   用户app 可以选 有啥用？」。
+   性格改回**纯服务端按时段默认**：server.py 的 dj_mood() 按 6-17 / 17-21 /
+   21-6 自己切 announce / chat / night，客户端不再发 mood 字段，也就没有
+   任何可高亮的按钮了。原来这里连着三版修「性格按钮塌成一整行」「折叠行
+   报不出当前选了什么」的补丁，跟着一起删 —— 没有按钮，也就没有塌不塌。
    ===================================================================== */
-.mood-row {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  margin: 2px 0 0;
-}
-
-.mood-lb {
-  font-size: 11px;
-  color: var(--muted);
-  margin-right: 2px;
-  flex: none;
-}
-
-.mood {
-  flex: 1;
-  min-width: 0;
-  padding: 7px 4px !important;
-  font-size: 11.5px !important;
-  font-weight: 700 !important;
-  color: #ddd3ff !important;
-  background: rgba(139, 92, 246, .14) !important;
-  border: 1px solid rgba(167, 139, 250, .32) !important;
-  border-radius: 999px !important;
-  cursor: pointer;
-  transform: none !important;
-  transition: background-color var(--t-fast) var(--ease),
-              border-color var(--t-fast) var(--ease),
-              transform var(--t-fast) var(--ease) !important;
-}
-
-.mood.auto { flex: 0 0 auto; padding: 7px 11px !important; color: var(--muted) !important; }
-
-.mood.on {
-  background: var(--grad) !important;
-  border-color: rgba(236, 72, 152, .6) !important;
-  color: #fff !important;
-  box-shadow: 0 4px 12px rgba(236, 72, 152, .3);
-}
-
-.mood:active { transform: scale(.94) !important; }
-
-/* v1.21.9：点播墙（创意⑤）撤下 —— 播过的歌改一次性提醒，墙的样式一并删。 */
-
-/* —— v1.21.2 修：主播性格那一行塌了 ——
-   .mood 命中了 .req-form button 的 width:100%（那条规则给「点歌」主按钮写的，
-   覆盖了所有表单按钮），于是四个性格按钮各占一整行，只剩「自动」看得见，
-   「主」字被挤到屏幕外。截图证据：点歌台里只剩一条满宽的「自动」。
-   修：性格按钮自己定死宽度（flex:1 等分），标签不换行。 */
-.req-form .mood,
-.req-form .mood-row .mood {
-  width: auto !important;
-  flex: 1 1 0 !important;
-  min-width: 0 !important;
-  max-width: none !important;
-  margin: 0 !important;
-}
-
-.req-form .mood-row .mood.auto {
-  flex: 0 0 auto !important;
-  padding: 7px 10px !important;
-}
-
-.req-form .mood-lb {
-  flex: none !important;
-  white-space: nowrap;
-  font-size: 11px;
-}
-
-/* 兜底：性格行整体不换行，横向排布 */
-.mood-row {
-  flex-wrap: nowrap !important;
-  gap: 4px !important;
-}
-.mood-row .mood {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 
 /* =====================================================================
    v1.21.2 修二：封面还是太大，排队列表被压住
@@ -2256,9 +2119,6 @@ body.track-change #cover {
 #cover::before { top: -3px; right: -3px; bottom: -3px; left: -3px; filter: blur(4px); }
 
 .queue-rail { padding-top: 2px; }
-.queue-rail-list { gap: 4px; }
-.q-item { padding: 4px 5px 5px; }
-.q-main b { font-size: 10.5px; }
 
 /* 极窄屏：排队栏缩到 88px，封面再让一步 */
 @media (max-width: 340px) {
@@ -2346,26 +2206,10 @@ body.track-change #cover {
   border: 1px solid rgba(34, 211, 238, 0.18);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
-.queue-rail-h {
-  margin-bottom: 5px;
-  letter-spacing: 2px;
-  color: rgba(34, 211, 238, 0.85);
-}
-.queue-rail-list {
-  max-height: calc(26vh - 30px);     /* 扣掉卡的内边距 + 表头 */
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: none;
-  gap: 4px;
-}
-.queue-rail-list::-webkit-scrollbar { width: 0; height: 0; }
-.q-item {
-  padding: 4px 5px 5px;
-  gap: 5px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 0;
-  border-left: 2px solid rgba(34, 211, 238, 0.45);
-}
+/* v1.21.30：表头 .queue-rail-h / 列表 .queue-rail-list / 条目 .q-item 随那张
+   <ol> 一起删了 —— 左栏现在是「波浪 + 从右往左滚的字幕」，样式在文件前面
+   「左边透明排队栏」那段。卡底、圆角、青色描边（.queue-rail 本身）保留，
+   波浪就画在这张卡里。 */
 /* 侧栏加宽 8px：卡底和内边距吃掉了一截，歌名要留够字宽才不会挤折行 */
 .player { grid-template-columns: minmax(0, 112px) minmax(0, 1fr); }
 
@@ -2424,17 +2268,14 @@ body.track-change #cover {
 }
 
 /* ============ ⑦ 触摸目标 + 吸底遮挡（点歌台实测数据） ============
-   实测：曲库常听 chips 只有 29px 高、右上 ✕ 只有 32px —— 指头点不中，
-   这也是用户说「框太小」漏掉的一角。统一抬到 40 / 44px。
+   实测：右上 ✕ 只有 32px —— 指头点不中，这也是用户说「框太小」漏掉的一角，
+   抬到 44px。（原来这里还有一条「曲库常听 chips 抬到 40px」，chips 已随
+   #reqChips 整块删除。）
    另外两个实测出来的小毛病：
      · 这台 WebView 用的是**经典滚动条**（不是 overlay），会在抽屉右侧
        横向吃掉 8px 宽度（标题行实测 385 而不是 393）；
      · 吸底「收起」原是半透明渐变，滚动过程中会把正从后面滑过的候选行
        压糊 —— 改成不透明底色，内容从它后面滑过就干干净净。 */
-.req-chips .chip,
-.ac-item {
-  min-height: 40px;
-}
 .dialog-x {
   width: 44px;
   height: 44px;
@@ -2455,12 +2296,12 @@ body.track-change #cover {
    没写」。文件
    别处的 chips / mood / dialog-actions 都另有 margin 兜底所以看不出问题，
    下面这些地方原本**只靠 gap 留白**，实测元素全贴在一起（台标光晕压住
-   slogan、排队序号贴着歌名、音量图标贴着滑杆、主播表情贴着文案）——
-   逐个补显式 margin。 */
+    slogan、排队序号贴着歌名、主播表情贴着文案）——
+    逐个补显式 margin。v1.21.30 新加的音量按钮与滚动字幕同样**不写 gap**，
+    在各自那段里直接给了 margin，这里不再重复。 */
 .q-no { margin-right: 5px; }
 .meta-chip + .meta-chip { margin-left: 6px; }
 .vod-row > * + * { margin-left: 9px; }
-.volume input[type="range"] { margin-left: 10px; margin-right: 10px; }
 .dj-bubble .dj-face { margin-right: 10px; }
 
 /* ============ ⑨ 播报文案溢出压到心愿条（截图里框底那半行字） ============
@@ -2745,75 +2586,6 @@ body.track-change #cover {
   margin: 2px 2px 10px;
   font-size: 12px;
   color: var(--muted);
-}
-
-/* ============ v1.21.15 搜索分页：联想面板 + 页脚 ============
-   以前联想是「绝对定位的 ul，最多 6 条」，没有翻页也没有云端入口。
-   现在列表与页脚包在 .ac-panel 里，页脚常驻在列表下方（不随列表滚动），
-   点歌台 WebView 低于 Chrome 84（gap/inset 无效），一律用 margin。 */
-.ac-panel {
-  /* v1.21.16：正常流内，不再 absolute 溢出盖住下面的内容 */
-  position: static;
-  margin: 8px 0 2px;
-  padding: 6px;
-  background: rgba(22, 16, 49, 0.92);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 12px;
-}
-.ac-panel[hidden] { display: none; }
-.ac-panel .ac-list {
-  position: static;
-  max-height: 168px;
-  margin: 0;
-  padding: 0;
-  background: transparent;
-  border: 0;
-  box-shadow: none;
-}
-.ac-foot {
-  display: flex;
-  align-items: center;
-  margin-top: 4px;
-  padding: 5px 2px 1px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-}
-/* 特异性要压过 `.req-form button{width:100%}`（0,1,1）：这里用两级类名。
-   截图实锤过：不压的话三个按钮全被拉成整行宽，页脚直接塌掉。 */
-.ac-panel .ac-pg, .ac-panel .ac-cloud {
-  flex: none;
-  width: auto;
-  min-width: 62px;
-  min-height: 30px;
-  padding: 0 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--text);
-  font-size: 11.5px;
-  cursor: pointer;
-}
-.ac-panel .ac-pg:disabled, .ac-panel .ac-cloud:disabled { opacity: 0.4; }
-.ac-panel .ac-pg:active, .ac-panel .ac-cloud:active { background: rgba(139, 92, 246, 0.28); }
-.ac-panel .ac-pg-n {
-  flex: 1 1 auto;
-  min-width: 0;
-  text-align: center;
-  font-size: 11px;
-  color: var(--muted);
-}
-.ac-panel .ac-cloud {
-  margin-left: 8px;
-  min-width: 76px;
-  white-space: nowrap;
-  border-color: rgba(236, 72, 153, 0.4);
-  color: #f9a8d4;
-}
-.ac-src {
-  display: block;
-  padding: 6px 8px 2px;
-  font-size: 11px;
-  color: var(--muted);
-}
 /* 换一批版本：与「稍后再说」同级的次要按钮 */
 .cand-more {
   flex: none;
@@ -2831,11 +2603,14 @@ body.track-change #cover {
 .cand-more:disabled { opacity: 0.5; }
 
 /* =====================================================================
-   v1.21.19：首页大头像 → 音乐波形
-   用户原话：「App首页中间那个大头像改为音乐波浪线」。
-   主播头像撤掉，封面中央换成一组随歌变色、播放时跳动的波形柱。
-   颜色读 --cover-hue（app.js 按歌名+歌手算的稳定色相），换歌时 .8s 化过去；
-   播放时（body.playing）每根柱子用不同延迟做上下跳动，静止时保持错落高度。
+   v1.21.30：波形柱 → 一条横向波浪线（开花）
+   用户原话：「app界面那个圆的音乐旋律动画可以改成那种一条线的波浪开花样子吗」
+             「那个波浪动画做牛逼一点」。
+   圆盘里那 11 根柱子整段删掉，换成 SVG 里三条 path：主线 + 两道残影。
+   形状不写死在 CSS 里 —— app.js 每帧算（三条正弦叠加 + 中间鼓、两头收的
+   包络），所以线是从中间「开」出去的一朵，而不是一条两端硬切的抖动直线。
+   主线最粗最亮，两道残影相位错开、更细更淡：静止时是三层叠影，动起来有纵深。
+   播放时（body.playing）振幅涨、走得快；暂停时振幅缓缓摊平 —— 开关没换。
    ===================================================================== */
 
 /* 封面背景：去掉 dj-avatar.png，改成深色底 + 随歌变色的径向光晕 */
@@ -2846,72 +2621,65 @@ body.track-change #cover {
     #0c0820 !important;
 }
 
-
-
-/* 波形容器：居中、横向排列、底部对齐 */
-#cover .waveform {
-  position: relative;
+/* 波浪容器：铺在圆盘正中，横向占满、纵向留一条。
+   .cover 是 flex 且 justify-content:center，这里用 absolute 脱开文档流 ——
+   免得 SVG 被 flex 挤成一条竖线。 */
+.wave {
+  position: absolute;
   z-index: 2;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  width: 72%;
-  height: 58%;
+  left: 6%;
+  right: 6%;
+  top: 50%;
+  height: 52%;
+  transform: translateY(-50%);
+  pointer-events: none;
 }
 
-/* 单根柱子：圆角、随歌变色的渐变（下深上亮） */
-#cover .waveform i {
+.wave-svg {
   display: block;
-  width: 7px;
-  margin: 0 2.5px;            /* WebView 不认 flex gap，用 margin 兜底 */
-  border-radius: 4px;
-  background: linear-gradient(180deg,
-    hsl(var(--cover-hue) 95% 78%),
-    hsl(var(--cover-hue) 90% 60%) 55%,
-    hsl(calc(var(--cover-hue) - 20) 85% 48%));
-  box-shadow: 0 0 8px hsl(var(--cover-hue) 90% 60% / .55);
-  transition: background .8s var(--ease), box-shadow .8s var(--ease);
+  width: 100%;
+  height: 100%;
+  /* 允许溢出：波峰鼓到 viewBox 外一点点也不该被裁掉 */
+  overflow: visible;
 }
 
-/* 11 根柱子的静止错落高度：中间高、两边低，像一座山峰 */
-#cover .waveform i:nth-child(1)  { height: 22%; }
-#cover .waveform i:nth-child(2)  { height: 38%; }
-#cover .waveform i:nth-child(3)  { height: 56%; }
-#cover .waveform i:nth-child(4)  { height: 72%; }
-#cover .waveform i:nth-child(5)  { height: 88%; }
-#cover .waveform i:nth-child(6)  { height: 100%; }
-#cover .waveform i:nth-child(7)  { height: 86%; }
-#cover .waveform i:nth-child(8)  { height: 68%; }
-#cover .waveform i:nth-child(9)  { height: 50%; }
-#cover .waveform i:nth-child(10) { height: 34%; }
-#cover .waveform i:nth-child(11) { height: 20%; }
-
-/* 播放时每根柱子跳动：不同延迟 + 不同振幅，看起来像真实声波 */
-body.playing #cover .waveform i {
-  animation: waveBar 1.1s ease-in-out infinite;
-}
-body.playing #cover .waveform i:nth-child(1)  { animation-delay: 0s;    animation-duration: 1.0s; }
-body.playing #cover .waveform i:nth-child(2)  { animation-delay: 0.12s; animation-duration: 1.3s; }
-body.playing #cover .waveform i:nth-child(3)  { animation-delay: 0.24s; animation-duration: 0.9s; }
-body.playing #cover .waveform i:nth-child(4)  { animation-delay: 0.08s; animation-duration: 1.2s; }
-body.playing #cover .waveform i:nth-child(5)  { animation-delay: 0.36s; animation-duration: 1.1s; }
-body.playing #cover .waveform i:nth-child(6)  { animation-delay: 0.18s; animation-duration: 1.4s; }
-body.playing #cover .waveform i:nth-child(7)  { animation-delay: 0.04s; animation-duration: 1.0s; }
-body.playing #cover .waveform i:nth-child(8)  { animation-delay: 0.30s; animation-duration: 1.2s; }
-body.playing #cover .waveform i:nth-child(9)  { animation-delay: 0.14s; animation-duration: 0.95s; }
-body.playing #cover .waveform i:nth-child(10) { animation-delay: 0.26s; animation-duration: 1.15s; }
-body.playing #cover .waveform i:nth-child(11) { animation-delay: 0.10s; animation-duration: 1.25s; }
-
-/* 跳动：在自身高度的 35%~100% 之间往复（不用 transform scaleY 是因为
-   scaleY 会让圆角也被拉伸变形；改 height 更干净，且底部对齐不动）。 */
-@keyframes waveBar {
-  0%, 100% { height: 35%; }
-  50%      { height: 100%; }
+/* 三条线共用画法。stroke 走渐变（紫→青→粉→金），比单色更有「一条线」的层次，
+   也顺手把原来 --cover-hue「随歌变色」的那股劲儿接了过来。 */
+.wave .wave-main,
+.wave .wave-ghost {
+  fill: none;
+  stroke: url(#wGradHero);
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
-/* 减少动效偏好：柱子不跳，保持错落静止高度 */
+.wave .wave-main {
+  stroke-width: 3.6;
+  filter: drop-shadow(0 0 7px rgba(139, 92, 246, .6));
+}
+
+.wave .wave-ghost { stroke-width: 1.6; opacity: .5; }
+.wave .wave-ghost.g1 { filter: blur(1.4px); opacity: .55; }
+.wave .wave-ghost.g2 { filter: blur(2.4px); opacity: .34; }
+
+/* 左栏那条：同一份 path，换个渐变、细一点 —— 它是配角，别跟圆盘抢眼。
+   容器不是 .wave 的后代，所以要单独写一条（两条选择器互不相干）。 */
+.rail-wave .wave-main,
+.rail-wave .wave-ghost {
+  fill: none;
+  stroke: url(#wGradRail);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.rail-wave .wave-main { stroke-width: 3; filter: drop-shadow(0 0 5px rgba(34, 211, 238, .55)); }
+.rail-wave .wave-ghost { stroke-width: 1.4; }
+.rail-wave .wave-ghost.g1 { opacity: .5; filter: blur(1.2px); }
+.rail-wave .wave-ghost.g2 { opacity: .3; filter: blur(2px); }
+
+/* 减少动效偏好：波浪停在静态那一帧（画是画好的，只是不再流） */
 @media (prefers-reduced-motion: reduce) {
-  body.playing #cover .waveform i { animation: none; }
+  .rail-tick-track { animation: none !important; }
 }
 
 /* ============ v1.21.25「我点过的」高亮 → v1.21.29 只剩行高亮 ============
@@ -2928,28 +2696,31 @@ body.playing #cover .waveform i:nth-child(11) { animation-delay: 0.10s; animatio
 /* =====================================================================
    v1.21.29 点歌台大改版 —— 干净卡片式
    用户原话：「点歌界面太丑，感觉就跟没装修的一样」。
-   病根不是缺功能，是**没有层次**：输入框、联想面板、翻页条、折叠行、提示行、
-   底部按钮，每一块都是同一种深紫底 + 同一种 1px 细边 + 同一种字号，堆在一起
-   就是一张还没排版的表单。这次按「一屏一件事」重排，每块自带卡片外衣，
-   字号拉出层级（11 小标题 / 12.5 次要 / 14.5 歌名 / 16 输入）：
+    病根不是缺功能，是**没有层次**：输入框、底部按钮，每一块都是同一种深紫底 +
+    同一种 1px 细边 + 同一种字号，堆在一起就是一张还没排版的表单。这次按
+    「一屏一件事」重排，每块自带卡片外衣，字号拉出层级（11 小标题 /
+    12.5 次要 / 14.5 歌名 / 16 输入）：
 
-     头部  细分隔线：标题 15 / 在线人数 11 / 昵称·关闭 11.5
-     卡 A  点歌   —— 唯一的视觉主角：46px 输入框 + 88px 主按钮
-     卡 A′ 曲库   —— 联想/翻页收在卡内，页脚按钮改小胶囊
-     二级  主播性格 —— 折叠，但折叠那一行**报出当前选了什么**（v1.21.29 新增）
-     卡 C  我的歌 —— 自己的单，品牌渐变底
-     卡 D  队列   —— 自带底 + 分组小标题，没有行就整节隐藏（空框更丑）
+      头部  细分隔线：标题 15 / 在线人数 11 / 昵称·关闭 11.5
+      卡 A  点歌   —— 唯一的视觉主角：46px 输入框 + 88px 主按钮
+      卡 C  我的歌 —— 自己的单，品牌渐变底
+      卡 D  队列   —— 自带底 + 分组小标题，没有行就整节隐藏（空框更丑）
 
-   圆角：卡 16 / 控件 12 / 药丸 999。
-   下面每一条都不许破坏 layout-gate 钉住的老规矩：输入框必须有 1px 可见边 +
-   非透明底、点歌按钮 ≤96px 且有 box-shadow、.ac-panel 保持 padding 6 +
-   border 1（页脚 = 面板宽 - 14）、.ac-list ≤180px、抽屉遮罩上浅下深。
+    v1.21.30 起卡 A′（联想/翻页面板）与「主播性格」二级整块删除（用户：搜索
+    下面那个框删掉、性格选择器摘掉），卡 A 只剩输入框 + 按钮。
+
+    圆角：卡 16 / 控件 12 / 药丸 999。
+    下面每一条都不许破坏 layout-gate 钉住的老规矩：输入框必须有 1px 可见边 +
+    非透明底、点歌按钮 ≤96px 且有 box-shadow、抽屉遮罩上浅下深
+    （.ac-panel / .ac-list 的钉子随面板删除，v1.21.30 起 layout-gate 改测
+    音量 ±按钮与左栏字幕轨）。
    ===================================================================== */
 
-/* ---- hidden 兜底：下面给这些块设了 display，不补一条 [hidden] 就藏不住 ---- */
+/* ---- hidden 兜底：下面给这些块设了 display，不补一条 [hidden] 就藏不住 ----
+   v1.21.30：.req-chips[hidden] / .ac-panel[hidden] 随两个面板一起删。 */
 .compose-card[hidden], .my-card[hidden], .queue-sec[hidden],
-.req-sum[hidden], .req-hint[hidden], .req-chips[hidden],
-.req-nick[hidden], .ac-panel[hidden] { display: none; }
+.req-sum[hidden], .req-hint[hidden],
+.req-nick[hidden] { display: none; }
 
 /* ---- 头部：一行细线把「标题 / 谁在点 / 我是谁」和下面的内容隔开 ---- */
 .req-head {
@@ -3050,88 +2821,6 @@ body.playing #cover .waveform i:nth-child(11) { animation-delay: 0.10s; animatio
   box-shadow: 0 6px 16px -9px rgba(236, 72, 152, 0.85);
 }
 .req-form .req-go:active { transform: translateY(1px); }
-
-/* ---- 卡 A′：联想面板（在流内，收在卡里；页脚按钮改小胶囊）---- */
-.ac-panel {
-  margin-top: 10px;
-  padding: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  background: rgba(0, 0, 0, 0.24);
-}
-.ac-panel .ac-list { max-height: 168px; }
-.ac-foot { gap: 8px; padding: 7px 0 0; }
-.ac-pg,
-.ac-cloud {
-  min-height: 30px;
-  padding: 0 13px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.13);
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--text);
-  font-size: 12px;
-}
-.ac-pg-n {
-  margin-left: auto;
-  font-size: 11.5px;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-
-/* ---- 卡 A″：曲库快捷词（横向一排，滚着看）---- */
-.req-chips { margin: 12px -4px 0; padding: 2px 4px 4px; gap: 7px; }
-
-/* ---- 二级：主播性格（折叠，但那一行要报出当前选了什么）---- */
-.req-more {
-  margin-top: 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
-}
-.req-more > summary {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 11px 2px 6px;
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--muted);
-}
-.req-more > summary::-webkit-details-marker { display: none; }
-.req-more > summary::after {
-  content: '\203A';
-  margin-left: auto;
-  font-size: 17px;
-  line-height: 1;
-  color: rgba(184, 173, 224, 0.7);
-  transform: rotate(90deg);
-  transition: transform var(--t-fast) var(--ease);
-}
-.req-more[open] > summary::after { transform: rotate(-90deg); }
-.req-more[open] > summary { color: var(--text); }
-.more-val {
-  font-style: normal;
-  font-size: 11.5px;
-  font-weight: 600;
-  color: rgba(246, 243, 255, 0.7);
-}
-.mood-row { gap: 6px; flex-wrap: wrap; padding: 6px 0 4px; }
-.mood-lb { font-size: 11.5px; color: var(--muted); }
-.mood {
-  flex: 0 0 auto;
-  min-height: 32px;
-  padding: 0 14px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--text);
-  font-size: 12.5px;
-}
-.mood.on {
-  border-color: transparent;
-  background: var(--grad);
-  color: #fff;
-  font-weight: 700;
-  box-shadow: 0 5px 14px -8px rgba(236, 72, 152, 0.9);
-}
 
 /* ---- 昵称（点了头部「昵称」才出现）---- */
 .req-nick {

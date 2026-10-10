@@ -937,7 +937,15 @@ const stationNameEl = $('stationName');
 const stationDescEl = $('stationDesc');
 const stationListEl = $('stationList');
 const catListEl = $('catList');
-const volumeEl = $('volume');
+/* v1.21.30：音量从滑杆换成 −／＋ 两颗按钮（用户原话「音量控制滑动很容易误碰
+ * 改成两个按钮加减音量」）。滑杆连同它的 input 事件一起删了，音量值改由
+ * volLevel 这个变量持有；中间那截（分段条 + 数字）是**纯展示**，点不中就不会
+ * 被误碰 —— 这正是那条反馈的根：滑杆的热区横跨大半屏，手指一扫就改了音量。 */
+const volUpBtn = $('volUp');
+const volDownBtn = $('volDown');
+const volNumEl = $('volNum');
+const volMeterEl = $('volMeter');
+let volLevel = 0.85;   // 0~1；下面「音量」那段从 localStorage 回填，此处先给默认
 const toastEl = $('toast');
 
 /* ---------------- 状态 ---------------- */
@@ -1007,8 +1015,32 @@ let volFadeTimer = null;
 let volFadeWasAudible = false;   // 上一刻是否「有声」，用来只认「从无声到有声」
 
 function userVolume() {
-  const v = volumeEl ? Number(volumeEl.value) : 1;
+  const v = Number(volLevel);
   return (Number.isFinite(v) && v >= 0) ? v : 1;
+}
+
+/** 把 volLevel 画到那两处纯展示上：5 段分段条 + 百分比数字。 */
+function paintVolume() {
+  const pct = Math.round(userVolume() * 100);
+  if (volNumEl) volNumEl.textContent = String(pct);
+  if (volMeterEl && volMeterEl.children) {
+    const lit = Math.max(0, Math.min(volMeterEl.children.length, Math.ceil(pct / 20)));
+    for (let i = 0; i < volMeterEl.children.length; i++) {
+      const seg = volMeterEl.children[i];
+      if (seg && seg.classList) seg.classList.toggle('on', i < lit);
+    }
+  }
+}
+
+/** ±10%：一步够明显，又不会一下从有声按到静音；端点夹住，到顶/到底就不再动。 */
+function stepVolume(delta) {
+  const v = Math.max(0, Math.min(1, Math.round((volLevel + delta) * 100) / 100));
+  if (v === volLevel) { paintVolume(); return; }
+  volLevel = v;
+  volUserChanged();               // 渐变期间按按钮要跟手：立刻生效并打断渐变
+  audio.volume = volLevel;
+  try { safeSet('fm891.volume', String(volLevel)); } catch (_) { /* 忽略 */ }
+  paintVolume();
 }
 
 function volFadeTo(target, ms) {
@@ -1149,8 +1181,9 @@ function isBenignPlayAbort(err) {
 // 新装机初始化成 0（静音）。必须显式判空走默认值；合法的 0（用户主动调静音）保留。
 const rawVolume = safeGet('fm891.volume');
 const savedVolume = rawVolume === null || rawVolume === '' ? NaN : Number(rawVolume);
-audio.volume = Number.isFinite(savedVolume) && savedVolume >= 0 && savedVolume <= 1 ? savedVolume : 0.85;
-volumeEl.value = String(audio.volume);
+volLevel = Number.isFinite(savedVolume) && savedVolume >= 0 && savedVolume <= 1 ? savedVolume : 0.85;
+audio.volume = volLevel;
+paintVolume();   // 分段条 + 数字先画上（按钮还没人碰过，但界面不该是空的）
 
 const current = () => playlist[index];
 
@@ -1708,20 +1741,22 @@ function renderNowPlaying(j) {
  * 垫场在后）。刚备好的点歌会被插到下一首 —— 就是在这里冒出来的。
  * 单曲模式下不显示：那会儿耳朵里是单曲，混着电台歌单只会更乱。 */
 function renderUpNext(list) {
-  /* v1.21.4：排队列表从底部那条横滑搬到左边一栏透明列表
-   * （用户：中间左边透明显示排队列表，下面就不要显示了）。 */
+  /* v1.21.30 左栏重做（用户原话「把那个左边的排队改为那个波浪 下面从右往左
+   * 滚动字母多好」）：左边栏 = 上面一条横向波浪 + 下面一条**从右往左滚的字幕**，
+   * 滚的内容就是排队（序号 · 歌名 · 谁点的）—— 一个位置同时保住「好看」和
+   * 「我第几位」。原来那张 <ol> 列表删了，队列数据在这里拼成字幕条。
+   * 「从右往左」不靠 JS 挪位置：轨道里的内容重复两份，CSS transform 从 0
+   * 平移到 -50% 循环，掉帧也不会跳。 */
   const box = $('queueRail');
-  const strip = $('queueRailList');
+  const track = $('railTickTrack');
   const empty = $('queueRailEmpty');
-  if (!box || !strip) return;
+  if (!box || !track) return;
   const arr = Array.isArray(list) ? list.filter((x) => x && x.title).slice(0, 7) : [];
-  /* 正在播的那一首不该再出现在「排队」里 —— 截图里《秋天不回来》正在播，
-     队列 #1 也是它，同一首歌占两格，看着就是 bug。左栏只放 4 条：
-     放不下就该省略，也不要溢出到正文下面被盖住。
-     v1.21.11：服务器 now 在 next 前面挂「找歌中」的点歌（wait=1，最多 2 条，
-     备好即插到最前）—— 上面的窗口从 5 放宽到 7，别把后面已备好的歌挤没了。 */
+  /* 正在播的那一首不该再出现在「排队」里 —— 同一首歌占两格，看着就是 bug。
+     v1.21.11：服务器在 next 前面挂「找歌中」的点歌（wait=1，最多 2 条，备好即
+     插到最前）—— 窗口放宽到 7。字幕是滚着看的，放 6 条比原来 4 条划算。 */
   const cur = (airInfo && airInfo.id) || '';
-  const queue = arr.filter((x) => !cur || String(x.id || '') !== String(cur)).slice(0, 4);
+  const queue = arr.filter((x) => !cur || String(x.id || '') !== String(cur)).slice(0, 6);
   if (!queue.length || vod) {
     box.hidden = true;
     return;
@@ -1729,45 +1764,50 @@ function renderUpNext(list) {
   /* sig 必须带上 wait：同一条从「找歌中」变「已备好」时 id 不变，不带 wait
      就会被当成同一份歌单跳过重画，状态字永远停在旧的（回归盯这条）。 */
   const sig = queue.map((x) => String(x.id || x.title) + (x.wait ? '~w' : '')).join('|');
-  if (strip.getAttribute('data-sig') === sig) return;   // 同一份别重画
-  strip.setAttribute('data-sig', sig);
-  strip.textContent = '';
+  if (track.getAttribute('data-sig') === sig) return;   // 同一份别重画
+  track.setAttribute('data-sig', sig);
+  box.hidden = false;   // 先显示再量宽：hidden 时 clientWidth 是 0，补份数会算错
+
+  const NO = '①②③④⑤⑥⑦⑧⑨⑩';
+  /* 一段 = 「① 歌名 谁点的」。攒成一个 span，后面整段 clone 出来凑两份。 */
+  const unit = document.createElement('span');
+  unit.className = 'q-unit';
   queue.forEach((it, i) => {
-    const li = document.createElement('li');
-    li.className = 'q-item' + (it.lib ? ' lib' : '') + (it.wait ? ' wait' : '');
-    /* 把序号写进 --i：CSS 里 qIn 动画用它做级联延迟（每条晚 55ms 依次浮现）。
-     * 之前 CSS 写了 var(--i) 但从没赋值 → 延迟恒为 0，排队条目是一起出现的，
-     * 「丝滑」就少了一半。jsdom 不跑动画，所以要靠断言盯住这个接线。 */
-    try { li.style.setProperty('--i', String(i)); } catch (_) { /* 忽略 */ }
-    const no = document.createElement('span');
+    const seg = document.createElement('span');
+    seg.className = 'q-seg' + (it.wait ? ' wait' : '');
+    const no = document.createElement('b');
     no.className = 'q-no';
-    no.textContent = String(i + 1);
-    const main = document.createElement('span');
-    main.className = 'q-main';
-    const b = document.createElement('b');
-    b.textContent = String(it.title || '').slice(0, 10);
-    main.appendChild(b);
-    if (it.artist) {
-      const a = document.createElement('small');
-      a.className = 'q-artist';
-      a.textContent = String(it.artist).slice(0, 8);
-      main.appendChild(a);
-    }
-    const s = document.createElement('small');
-    s.className = 'q-state';
+    no.textContent = NO[i] || String(i + 1);
+    const t = document.createElement('em');
+    t.className = 'q-t';
+    t.textContent = String(it.title || '').slice(0, 16);
+    seg.appendChild(no);
+    seg.appendChild(t);
+    const w = document.createElement('i');
+    w.className = 'q-who';
     /* 「找歌中」优先于点歌人：条目还没备好，最要紧的信息是「还在找」，
-     * 谁点的排第二（太长也放不下）。 */
-    s.textContent = it.wait
+       谁点的排第二（太长也放不下）。 */
+    w.textContent = it.wait
       ? (it.who ? String(it.who).slice(0, 4) + ' 找歌中' : '正在找歌')
       : it.lib ? '电台垫场'
-      : (it.who ? String(it.who).slice(0, 6) + ' 点的' : '正在准备');
-    main.appendChild(s);
-    li.appendChild(no);
-    li.appendChild(main);
-    strip.appendChild(li);
+      : (it.who ? String(it.who).slice(0, 6) + ' 点的' : '');
+    if (w.textContent) seg.appendChild(w);
+    unit.appendChild(seg);
   });
+
+  track.textContent = '';
+  /* 无缝循环的两个前提：① 轨道里是**完全相同的两份**（-50% 正好回到起点）；
+     ② 单份得铺满整栏 —— 否则滚到接缝处会空一下。宽度按字数估算补份数即可，
+     精确值不重要：估高了只是多复制一份，估矮了也照样不留缝。 */
+  const unitPx = Math.max(140, (unit.textContent || '').length * 15);
+  const boxW = Math.max(140, box.clientWidth || 160);
+  const copies = Math.max(1, Math.ceil(boxW / unitPx));
+  for (let r = 0; r < copies * 2; r++) {
+    track.appendChild(r === 0 ? unit : unit.cloneNode(true));
+  }
+  /* 走字速度按总长定：每秒约 45px，跟电台滚动字幕一个速度，长歌单滚得慢些。 */
+  track.style.animationDuration = Math.max(9, Math.round(unitPx * copies / 45)) + 's';
   if (empty) empty.hidden = arr.length > 0;
-  box.hidden = false;
 }
 
 /* 进入单曲模式：只改地址和展示，不动 shouldPlay、不改 playToken ——
@@ -2038,11 +2078,11 @@ if (airBarEl) {
   });
 }
 
-volumeEl.addEventListener('input', () => {
-    volUserChanged();        // 渐变期间拖音量条要跟手：立刻生效并打断渐变
-  audio.volume = Number(volumeEl.value);
-  safeSet('fm891.volume', String(audio.volume));
-});
+/* v1.21.30：音量改成 −／＋ 两颗按钮（滑杆的热区太容易被手指扫到）。
+ * 只做 ±10%，到 0% / 100% 就夹住不动 —— 想精确停在某个值可以连按，但误碰
+ * 最多只能把音量挪一格，再也不会一下拖到静音。 */
+if (volUpBtn) volUpBtn.addEventListener('click', () => stepVolume(0.1));
+if (volDownBtn) volDownBtn.addEventListener('click', () => stepVolume(-0.1));
 
 /* 卡死看门狗：缓冲超过 20 秒无进展 → 强制重连（治"断流卡住不报错"） */
 let stallTimer = null;
@@ -2388,7 +2428,7 @@ function currentVersion() {
       if (v) return v;
     }
   } catch (_) { /* 忽略 */ }
-  return '1.21.29'; // 网页版：与 manifest versionName 同步维护
+  return '1.21.30'; // 网页版：与 manifest versionName 同步维护
 }
 
 let updateUrl = '';
@@ -2494,13 +2534,119 @@ function wireUpdate() {
     try { window.AndroidIcy.applyUpdate(updateUrl); }
     catch (_) { setUpdateState('idle'); toast('调起更新失败，请稍后重试'); }
   });
-  const btn = $('checkUpdateBtn');
-  if (btn) btn.addEventListener('click', () => checkUpdate(false));
-
-  // APK 内：启动后静默检查一次
-  if (window.AndroidIcy) setTimeout(() => checkUpdate(true), 6000);
+  /* v1.21.30：底部那颗「检查更新」按钮删了（用户原话「更新应该是自动弹出，
+     底部不用显示 检查更新」）。检查改成**纯自动**：启动 6 秒后静默查一次，
+     之后每 6 小时再查一次 —— 只要有新版，那个「发现新版本」对话框自己弹，
+     不用用户去底部翻按钮。verLabel（页脚那个纯文本版号）照常填。 */
+  if (window.AndroidIcy) {
+    setTimeout(() => checkUpdate(true), 6000);
+    setInterval(() => checkUpdate(true), 6 * 3600 * 1000);
+  }
 }
 wireUpdate();
+
+/* ============================ 波浪动效（v1.21.30） ============================
+ * 用户原话：「app界面那个圆的音乐旋律动画可以改成那种一条线的波浪开花样子吗」
+ *           「那个波浪动画做牛逼一点」。
+ *
+ * 形状 = 三条正弦叠加 + **中间鼓、两头收的包络**。包络是「开花」的关键：
+ * 少了它就是一条两端硬切的抖动直线；有了它，线从两端收进 0、在中间鼓起来，
+ * 看着是从中间「开」出去的一朵。
+ * 主线上再压两道相位错开的残影（更细、更淡、带模糊）—— 静止时是三层叠影，
+ * 动起来才有纵深，这是「牛逼」的那一半。
+ *
+ * 播放时振幅涨、走得快；暂停时振幅缓缓摊平。开关还是原来那组柱子用的
+ * `body.playing`，行为不回退。
+ *
+ * **不碰 AudioContext**：这套流是跨域的，createMediaElementSource 一旦接上，
+ * 部分 WebView 会直接把声音掐掉 —— 画个动画把电台听没了，不划算。
+ *
+ * 两个位置（圆盘里那条 + 左栏那条）用**同一份 path**：两者 viewBox 相同、
+ * 都是 preserveAspectRatio=none，算一次套两处，一帧只算 3 条曲线而不是 6 条。 */
+const WAVE_W = 320;      // viewBox 宽（两点定曲线的横坐标范围）
+const WAVE_MID = 48;     // viewBox 高的一半 = 静止时那条线的高度
+const WAVE_N = 44;       // 采样点：够顺，又不至于让老机子掉帧
+const WAVE_X = [];       // x 坐标预存成字符串，避免每帧重复 toFixed
+for (let wi = 0; wi <= WAVE_N; wi++) WAVE_X.push(((wi / WAVE_N) * WAVE_W).toFixed(1));
+
+/** amp 振幅 / phase 相位 / freq 频率 → 一条 path 的 d。 */
+function waveD(amp, phase, freq) {
+  let d = '';
+  for (let i = 0; i <= WAVE_N; i++) {
+    const x = i / WAVE_N;
+    /* 包络 sin(pi x)^1.15：两端归零、中间最鼓 —— 这就是「开花」的形状 */
+    const env = Math.pow(Math.sin(Math.PI * x), 1.15);
+    const y = WAVE_MID + env * amp * (
+        Math.sin(x * 6.2831853 * freq + phase)
+      + Math.sin(x * 6.2831853 * freq * 2.3 + phase * 1.7) * 0.34
+      + Math.sin(x * 6.2831853 * freq * 0.55 - phase * 0.9) * 0.55);
+    d += (i ? 'L' : 'M') + WAVE_X[i] + ',' + (Math.round(y * 100) / 100);
+  }
+  return d;
+}
+
+let waveT = 0;             // 相位随时间往前走（就是「波在流」）
+let waveAmp = 5;           // 当前振幅：向目标平滑逼近，避免一开播就「啪」地弹开
+let waveAmpTarget = 5;
+let waveLast = 0;
+let wavePaths = null;      // [{main, g1, g2}]，算一次缓存起来
+
+function collectWaves() {
+  const out = [];
+  try {
+    const svgs = document.querySelectorAll('.wave-svg');
+    for (let i = 0; i < svgs.length; i++) {
+      const main = svgs[i].querySelector('.wave-main');
+      if (!main) continue;
+      out.push({ main: main,
+                 g1: svgs[i].querySelector('.wave-ghost.g1'),
+                 g2: svgs[i].querySelector('.wave-ghost.g2') });
+    }
+  } catch (_) { /* 老内核没有 querySelectorAll：动画是锦上添花，绝不许拖垮页面 */ }
+  return out;
+}
+
+/** 把当前这一帧的三条曲线写进 DOM。静态/动态共用这一个函数。 */
+function drawWave() {
+  if (!wavePaths) wavePaths = collectWaves();
+  if (!wavePaths.length) return;
+  const dm = waveD(waveAmp, waveT, 1.15);
+  const d1 = waveD(waveAmp * 0.62, waveT - 1.1, 0.9);
+  const d2 = waveD(waveAmp * 0.4, waveT + 1.6, 1.6);
+  for (let i = 0; i < wavePaths.length; i++) {
+    const w = wavePaths[i];
+    if (w.main) w.main.setAttribute('d', dm);
+    if (w.g1) w.g1.setAttribute('d', d1);
+    if (w.g2) w.g2.setAttribute('d', d2);
+  }
+}
+
+function waveFrame(ts) {
+  const now = typeof ts === 'number' ? ts : Date.now();
+  if (!waveLast) waveLast = now;
+  const dt = Math.min(0.1, (now - waveLast) / 1000);
+  waveLast = now;
+  let playing = false;
+  try { playing = !!(document.body && document.body.classList
+                     && document.body.classList.contains('playing')); } catch (_) { /* 忽略 */ }
+  waveAmpTarget = playing ? 22 : 5;
+  /* 平滑逼近：振幅 3.2/s 的速度靠过来，开播与暂停都不会有跳变 */
+  waveAmp += (waveAmpTarget - waveAmp) * Math.min(1, dt * 3.2);
+  waveT += dt * (playing ? 2.6 : 0.9);
+  drawWave();
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(waveFrame);
+}
+
+/** 开画：先静态落一帧（门禁与截图要读得到 d），有 rAF 再进动画循环。 */
+function startWave() {
+  wavePaths = collectWaves();
+  waveAmp = 5;
+  waveT = 0.35;
+  drawWave();
+  if (typeof requestAnimationFrame !== 'function') return;   // 沙箱里没有 rAF：画一帧就收，不挂定时器
+  requestAnimationFrame(waveFrame);
+}
+startWave();
 
 /* ---------------- 徽章渲染 + 实时在线人数（官方数据优先，MQTT 感知兜底） ----------------
  * 数据源一（优先）：蜻蜓FM 官方 channels 接口的 audience_count，见上方

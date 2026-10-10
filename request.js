@@ -431,16 +431,14 @@
          一连两次拒绝，用户看到的就是「点歌怎么老失败」。 */
       lastAddAt = now;
 
-      /* 主播性格：你在点歌台里选的那个，跟着这一单发到云端。选「自动」就空着，
-         服务器按时段挑（见 server.py 的 mood_of）。 */
-      const sMood = curMood();
+      /* v1.21.30：不再有 mood 字段 —— 主播性格是**服务端默认**（dj_mood 按时段
+         自己切），客户端选的那个已经整块摘掉，见文件上半那段说明。 */
       const it = {
         id: myId + '-' + nextSeq(),
         cid: myId,
         who: myName(),
         to: '',
         msg: '',
-        mood: sMood,
         title: t,
         ts: now,
         ver: 1,
@@ -810,50 +808,16 @@
     }
 
     /* =====================================================================
-   创意②（补）：主播性格由**听友自己选**
-   我第一版做成了按时段自动切，那是我替他决定 —— 用户原话：「用户自己选 DJ
-   的性格，比我们替他决定好得多」。所以点歌台里给三选一 + 一个「自动」，
-   选择记在 localStorage，跟着每一单发给云端；服务器优先照你选的来。
-   ===================================================================== */
-    const MOODS = [
-      { id: '', label: '自动', hint: '按时段自己挑' },
-      { id: 'announce', label: '报幕', hint: '白天那种，一本正经' },
-      { id: 'chat', label: '闲聊', hint: '像朋友说话' },
-      { id: 'night', label: '深夜', hint: '慢半拍，气口长' },
-    ];
-
-    function curMood() {
-      try { return String(localStorage.getItem('fm891.mood') || ''); } catch (_) { return ''; }
-    }
-
-    function setMood(v) {
-      try {
-        if (v) localStorage.setItem('fm891.mood', v);
-        else localStorage.removeItem('fm891.mood');
-      } catch (_) { /* 忽略 */ }
-      renderMood();
-    }
-
-    function renderMood() {
-      const row = $('moodRow');
-      const cur = curMood();
-      /* v1.21.29：折叠着的那一行也要报出当前选了什么 —— 用户原话「主播性格
-         选了完全没生效」，一半是**根本看不见自己选了啥**。 */
-      const val = $('moodVal');
-      if (val) {
-        const m = MOODS.filter((x) => x.id === cur)[0];
-        val.textContent = m ? (m.label + ' · ' + m.hint) : '按时段自动';
-      }
-      if (!row || typeof row.querySelectorAll !== 'function') return;
-      const list = row.querySelectorAll('.mood');
-      if (typeof list.forEach !== 'function') return;
-      list.forEach((b) => {
-        if (!b || typeof b.getAttribute !== 'function') return;
-        const on = (b.getAttribute('data-mood') || '') === cur;
-        if (b.classList && typeof b.classList.toggle === 'function') b.classList.toggle('on', on);
-        if (typeof b.setAttribute === 'function') b.setAttribute('aria-checked', on ? 'true' : 'false');
-      });
-    }
+       v1.21.30：主播性格的**客户端选择器整块删除**。
+       用户原话：「主播性格 感觉也没啥用 用户能选择吗？…这个不应该服务端默认的
+       吗 用户app 可以选 有啥用？」—— 于是把选择权收回服务端：
+         · 不再有 moodRow / moodVal / MOODS / curMood / setMood / renderMood；
+         · 不再往快照里塞 mood 字段（见 addRequest）；
+         · 老设备上存的 fm891.mood 启动时清掉，不留孤儿键。
+       性格改由 server.py 的 dj_mood() 按时段自己切（6-17 报幕 / 17-21 闲聊 /
+       21-6 深夜），那本来就是服务端默认，客户端只是插了一嘴。
+       ===================================================================== */
+    try { localStorage.removeItem('fm891.mood'); } catch (_) { /* 忽略 */ }
 
     /* =====================================================================
        创意④：等待变成内容 —— 电台给的是一个承诺，不是一段沉默
@@ -990,7 +954,6 @@
         if (pi && !pi.del && tombstone(pi)) publish();
       }
       sweepDone();     // wall 台账兜底：离线期间播过的一并静默撤下
-      ensureCatalog();   // 音源地址到位 → 顺手拉曲库（联想/AI 祝福/速点要用）
       render();          // 「正在播」标签跟着换条目
       queuePromise();    // ④ 等待变成内容：轮到我之前就告诉我
       if (typeof R.onAir === 'function') {
@@ -1099,7 +1062,9 @@
         if (topic.indexOf(READY_NS + '/') === 0 && onReady(j)) render();
         // 云开播（retain 的「此刻在放」，单主题不是子树）
         if (topic === AIR_NS) onAirMsg(j);
-        if (topic.indexOf(SEARCH_NS + '/') === 0) onSearchMsg(j);
+        // v1.21.30：s/<cid> 上只剩「换一批」是我们发出去的（op=more，不用回执）。
+        // 服务器回的 op=res 是给**曲库联想面板**看的，那块面板已整块删除，
+        // 所以这里不再消费它 —— 订阅留着（通道还在，占不了什么）。
       });
       c.on('error', () => {
         // 秒切：没建立起来的连接（DNS 被 fake-IP 污染 = 秒拒）不等 9 秒 guard。
@@ -1491,34 +1456,25 @@
     function open() {
       if (!reqMask) return;
       reqMask.hidden = false;
-      ensureCatalog(true);   // 强制重拉：祝福候选是服务端随机摇的（见 ensureCatalog 说明）
-      renderMood();         // 主播性格选中态
       sweepDone();          // 开窗先清一遍账：播过的/过期的 miss 不该出现在眼前
       render();
-      renderChips();
-      // 二次打开回顶：上次滚到底部看队列，重开还停在那儿的话，输入框和常听
-      // chips 全在屏幕外 —— 看着就像「抽屉是空的 / 打不开」。
+      // 二次打开回顶：上次滚到底部看队列，重开还停在那儿的话，输入框在屏幕外
+      // —— 看着就像「抽屉是空的 / 打不开」。
       try { const d = reqMask.firstElementChild; if (d) d.scrollTop = 0; } catch (_) { /* 忽略 */ }
-      // 联想下拉别带着上次的状态闪进来（关抽屉时也可能没来得及收）
-      try { const p = document.getElementById('acPanel'); if (p) p.hidden = true; } catch (_) { /* 忽略 */ }
       // 每次打开回填当前昵称：用户可能在别处改过，或本地被清过
       if (nickInput && !nickInput.value) { try { nickInput.value = myName(); } catch (_) { /* 忽略 */ } }
-      /* 打开就摊开服务器曲库（输入框空着时），用户能自己核对「服务器上都有啥」 */
+      /* v1.21.30：不再自动摊开曲库列表了（联想面板 + 常听 chips 已整块删除，
+         用户原话「点歌搜索下面那个框…感觉没啥用 删掉相关代码」）。
+         空输入时也不抢焦点 —— 一抢就把软键盘顶起来，正好挡住下面的队列。 */
       setTimeout(() => {
         try {
-          /* 空输入时**不抢焦点**：一抢就把软键盘顶起来，正好盖住下面刚摊开的
-             曲库（打开抽屉通常就是为了翻库挑歌）。有字才聚焦 —— 那是接着改
-             上次没发出去的歌名。选中即点歌之后也不再依赖键盘够得着「点歌」。 */
           const hasText = !!(reqInput && String(reqInput.value || '').trim());
           if (hasText) reqInput.focus();
-          if (reqInput && !hasText) showLibrary();
         } catch (_) { /* 忽略 */ }
       }, 60);
     }
     function close() {
       if (reqMask) reqMask.hidden = true;
-      // 关的时候把联想收掉：留着的话，遮罩透明度变化会把它「印」在背景上一帧
-      try { const p = document.getElementById('acPanel'); if (p) p.hidden = true; } catch (_) { /* 忽略 */ }
     }
     /* 安卓返回键要能先关弹窗。以前 MainActivity 里 canGoBack() 恒为 false（只有一个
      * file:// 页面），返回键直接 super.onBackPressed() 把 App 关了 —— 点歌台开着
@@ -1541,11 +1497,7 @@
       try {
         if (candMask && !candMask.hidden) { closeCandModal(true); return true; }
       } catch (_) { /* 忽略 */ }
-      // 有联想下拉先收下拉，再收弹窗：跟系统返回的逐层收一致
-      try {
-        const ac = document.getElementById('reqAc');
-        if (ac && !ac.hidden) { ac.hidden = true; return true; }
-      } catch (_) { /* 忽略 */ }
+      // （联想下拉已随 #acPanel 整块删除，这里不再有「先收下拉」这一层）
       if (!hasOpenDialog()) return false;
       close();
       return true;
@@ -1613,27 +1565,8 @@
     if (reqClose) reqClose.addEventListener('click', close);
     if (reqX) reqX.addEventListener('click', close);
 
-    /* 主播性格四选一：点一下就换，选中态立刻高亮（点选要有反馈）。
-       四个按钮直接写在 HTML 里（含「自动」），不在运行时造元素。
-       **能力探测**：精简的测试沙箱里元素可能没有 querySelectorAll/addEventListener
-       —— 那就让这一小段功能跳过，绝不能因为它把整个点歌模块搞挂（加载期抛异常
-       会让所有点歌能力一起消失）。 */
-    const moodRow = $('moodRow');
-    if (moodRow && typeof moodRow.querySelectorAll === 'function') {
-      const moods = moodRow.querySelectorAll('.mood');
-      if (typeof moods.forEach === 'function') {
-        moods.forEach((b) => {
-          if (!b || typeof b.addEventListener !== 'function') return;
-          b.addEventListener('click', (ev) => {
-            if (ev && typeof ev.stopPropagation === 'function') ev.stopPropagation();
-            setMood(typeof b.getAttribute === 'function' ? (b.getAttribute('data-mood') || '') : '');
-            try {
-              R.toast(curMood() ? ('主播：' + b.textContent) : '主播：按时段自动');
-            } catch (_) { /* 忽略 */ }
-          });
-        });
-      }
-    }
+    /* v1.21.30：主播性格四选一的按钮连同这段接线一起删了（用户：「用户 app
+       可以选 有啥用」）。没有可接的按钮，也就没有可探测的东西。 */
 
     /* 抽屉往下滑就关（用户反馈「不要那个框很烦人」—— 既然是抽屉，就得能用
      * 甩手势退出去，不能逼用户去找 ✕）。手势绑在抓手和遮罩空白处：抽屉内部
@@ -1726,316 +1659,16 @@
       });
     }
 
-    /* ---------------- 曲库：联想 / 速点 / AI 祝福 ----------------
-     * 数据源 = 云端 /catalog.json（标题+歌手+时长+祝福词本）。
-     * 地址从 app 的音源 origin 推导；还没入台时静默等待，功能降级不报错。 */
-    let catalog = [];
-    let catTimer = null;
-    let lastOrigin = '';
+    /* ---------------- v1.21.30：曲库联想 / 速点 / 分页 / 云端搜 整块删除 ----------------
+     * 用户原话「点歌搜索下面那个框有啥用 里面显示歌曲 感觉没啥用 删掉相关代码」，
+     * 追问时选的是「两个都删」（联想面板 + 常听 chips）。
+     * 连根拔掉的：catalog.json 拉取（catOrigin / ensureCatalog）、本地命中
+     * （acLocalHits）、渲染（renderAc / paintAcFoot / renderChips）、翻页（acGo）、
+     * 云端搜（searchAsk / onSearchMsg）、摊库（showLibrary / showAc / hideAc）、
+     * 一步点歌（pickSong），以及输入框那条 120ms 防抖联想与失焦收面板。
+     * 服务器接口 op=q **保留** —— live-search 联测还在用它。
+     * 点歌主路不变：写歌名 -> 「点歌」-> 云端全网找 -> 弹「挑个版本」。 */
 
-    function catOrigin() {
-      // 先问 air 消息自己（onAirMsg 里 airState 已就位，比等 app 转发更早）
-      try {
-        if (airState && /^https?:\/\//i.test(airState.url || '')) {
-          return new URL(airState.url).origin;
-        }
-      } catch (_) { /* 忽略 */ }
-      try { if (R.origin) return R.origin(); } catch (_) { /* 忽略 */ }
-      return '';
-    }
-
-    function ensureCatalog(force) {
-      const base = catOrigin();
-      if (!base) return;
-      /* force：每次打开点歌台都重新拉一次。原因：catalog.json 里的清单是
-       * 服务端**随机摇**的（每 20 分钟重摇一遍），而这里以前只要 catalog 非空
-       * 就直接 return —— 结果整晚都吃同一份缓存，用户连点几首每首的「AI 写祝福」
-       * 都一样，原话「咋每首歌都一样」。重拉一份几十 KB，值。 */
-      if (catalog.length && base === lastOrigin && !force) return;
-      /* 防抖只挡「随手补拉」，不挡 force：force 的语义就是「我现在就要新的」。
-         以前两者一起 return，结果 4 秒内第二次打开点歌台时曲库压根没刷新
-         （联想与速点一直吃旧清单，测试里换曲库也被它悄悄拦掉）。 */
-      if (catTimer && !force) return;
-      lastOrigin = base;
-      catTimer = setTimeout(() => { catTimer = null; }, 4000);
-      /* 老内核 / 测试环境可能没有 fetch：曲库是锦上添花，绝不许拖垮点歌台 */
-      if (typeof fetch !== 'function') return;
-      fetch(base + '/catalog.json', { cache: 'no-store' })
-        .then((r) => (r && r.ok ? r.json() : null))
-        .then((c) => {
-          if (!Array.isArray(c)) return;
-          catalog = c.filter((x) => x && typeof x.title === 'string' && x.title);
-          const lc = $('libCount');
-          if (lc) lc.textContent = String(catalog.length);
-          const lp = $('libPill');
-          if (lp && catalog.length) lp.hidden = false;
-          renderChips();
-        })
-        .catch(() => { acSt.libFailed = true; /* 拉不到曲库：以前纯静默，用户只看到「点歌台是空的」，不知道是没加载还是本来就没歌。记下来，空态时如实说。 */ });
-    }
-
-    /* 曲库速点 chips：打开点歌台一眼看到库里有什么，点一下直接填 */
-    function renderChips() {
-      const box = $('reqChips');
-      if (!box) return;
-      box.innerHTML = '';
-      if (!catalog.length) { box.hidden = true; return; }
-      catalog.slice(0, 8).forEach((c) => {
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'chip';
-        b.textContent = c.title;
-        b.addEventListener('click', () => pickSong(c.title));
-        box.appendChild(b);
-      });
-      box.hidden = false;
-    }
-
-    /* 输入联动联想：打「你的」下拉弹《你的选择》 */
-    function hideAc() {
-      const ac = $('reqAc');
-      const panel = $('acPanel');
-      if (ac) ac.textContent = '';
-      if (panel) panel.hidden = true;
-      clearTimeout(acAutoTimer);
-    }
-
-    /* v1.21.17：点联想项 / 曲库行 / 速点 chip = **一步点歌**。
-       原来三处都只把歌名填进输入框再 focus()，于是「点了没反应」，还得再按
-       一次「点歌」；focus() 在手机上还会把软键盘顶起来，正好挡住那个按钮 ——
-       用户要先关键盘再找按钮，流程当然乱七八糟。歌名本来就是完整的一首、意图
-       明确，选中即提交；点错了撤单即可。不 blur：blur 会挂一条 160ms 后的
-       hideAc，紧接着重摊曲库会被它一把收掉。 */
-    function pickSong(title) {
-      const t = String(title || '').trim();
-      if (!t) return;
-      if (reqInput) reqInput.value = t;
-      hideAc();
-      if (addRequest(t)) {
-        if (reqInput) reqInput.value = '';
-        showLibrary();   // 还想接着点？曲库重新摊开，一首接一首
-      }
-    }
-    /* ---------------- 搜索分页（v1.21.15）----------------
-     * 本地曲库命中 → 本地切页（毫秒级）；库外 → 问服务器（yt-dlp，带缓存）。
-     * 面板结构：.ac-panel > .ac-list + .ac-foot（页脚常驻，不随列表滚动）。 */
-    const AC_PER = 8;
-    /* hits = 本地命中的全集（按页切片渲染）；pageItems = 当前这一页要显示的条目。
-       两者必须分开：云端返回的**就是当页条目**，再按页码切一次会把末页切成空
-       （实测 3/3 页只有 1 条时列表空了）。 */
-    const acSt = { q: '', hits: [], pageItems: [], page: 1, pages: 1,
-                   src: '', rid: '', loading: false };
-    let acAutoTimer = null;
-
-    function acLocalHits(q) {
-      const lq = String(q).toLowerCase();
-      const out = [];
-      for (let k = 0; k < catalog.length; k++) {
-        const c = catalog[k];
-        const t = String(c.title || '');
-        if (!t) continue;
-        /* 歌名、歌手都认 —— 用户脑子里记的是「周杰伦的晴天」 */
-        const a = String(c.artist || '').toLowerCase();
-        if (t === q || t.indexOf(q) >= 0 || (a && a.indexOf(lq) >= 0)) {
-          out.push({ t: t, a: c.artist || '', d: c.dur || 0 });
-        }
-      }
-      out.sort((x, y) => (x.t === q ? 0 : 1) - (y.t === q ? 0 : 1) || x.t.length - y.t.length);
-      return out;
-    }
-
-    function searchAsk(q, page) {
-      if (!client || !synced || !q) return false;
-      const rid = 'r' + (Date.now() % 1000000);
-      acSt.rid = rid; acSt.q = q; acSt.page = page || 1; acSt.loading = true;
-      try {
-        client.publish(SEARCH_NS + '/' + myId,
-          JSON.stringify({ op: 'q', q: q, page: acSt.page, per: AC_PER, rid: rid }),
-          { qos: 0 });
-      } catch (_) { return false; }
-      renderAc();
-      return true;
-    }
-
-    function onSearchMsg(j) {
-      if (!j || j.op !== 'res') return;
-      if (acSt.rid && j.rid && String(j.rid) !== acSt.rid) return;   // 不是这次问的
-      acSt.loading = false;
-      if (j.loading) { renderAc(); return; }                          // 「云端在搜…」
-      acSt.hits = [];                       // 云端结果不并进本地全集
-      acSt.pageItems = Array.isArray(j.items) ? j.items : [];
-      acSt.page = Number(j.page) || 1;
-      acSt.pages = Number(j.pages) || 1;
-      acSt.src = j.src || 'yt';
-      renderAc();
-    }
-
-    function renderAc() {
-      const panel = $('acPanel');
-      const ul = $('reqAc');
-      if (!panel || !ul || !reqInput) return;
-      const q = String(reqInput.value || '').trim();
-      ul.textContent = '';
-      /* 只有「不是浏览曲库、而且输入框空了」才收面板。
-         浏览曲库（src='lib'）时输入框本来就是空的 —— 以前这里无条件 return，
-         刚摊开的曲库立刻被自己收回去，面板根本不显示（截图实锤）。 */
-      if (!q && acSt.src !== 'lib') { panel.hidden = true; return; }
-      if (acSt.loading) {
-        const li = document.createElement('li');
-        li.className = 'ac-src';
-        li.textContent = '云端搜索中…（第一次要等几秒）';
-        ul.appendChild(li);
-        panel.hidden = false;
-        paintAcFoot();
-        return;
-      }
-      if (!acSt.pageItems.length) {
-        const li = document.createElement('li');
-        li.className = 'ac-src';
-        li.textContent = acSt.src === 'yt'
-          ? '云端也没搜到《' + q + '》，换个写法或只写歌名试试'
-          : (q ? '本地曲库没有《' + q + '》· 点「云端搜」全网找'
-             : (acSt.libFailed
-                 ? '曲库暂时拉不到（服务器没连上）· 直接写歌名，点「云端搜」全网找'
-                 : '正在拉服务器曲库…先写歌名也行，点「云端搜」全网找'));
-        ul.appendChild(li);
-        panel.hidden = false;
-        paintAcFoot();
-        return;
-      }
-      acSt.pageItems.forEach((c) => {
-        const li = document.createElement('li');
-        li.className = 'ac-item';
-        const em = document.createElement('em');
-        em.textContent = c.t;
-        li.appendChild(em);
-        if (c.a) {
-          const sp = document.createElement('span');
-          sp.className = 'ac-artist';
-          sp.textContent = c.a;
-          li.appendChild(sp);
-        }
-        li.addEventListener('click', () => pickSong(c.t));
-        ul.appendChild(li);
-      });
-      panel.hidden = false;
-      paintAcFoot();
-    }
-
-    function paintAcFoot() {
-      const prev = $('acPrev');
-      const next = $('acNext');
-      const page = $('acPage');
-      const cloud = $('acCloud');
-      if (!prev || !next || !page || !cloud) return;
-      const multi = acSt.pages > 1;
-      prev.disabled = !multi || acSt.page <= 1;
-      next.disabled = !multi || acSt.page >= acSt.pages;
-      page.textContent = multi ? (acSt.page + '/' + acSt.pages)
-        : (acSt.src === 'yt' ? (acSt.pageItems.length + ' 首') : (acSt.hits.length + ' 首'));
-      /* 文案别再拼书名号：浏览曲库时输入框是空的，拼出来是「云端搜《》」，
-         窄按钮里直接被压成「云端搜 0」（截图实锤）。 */
-      const isCloud = acSt.src === 'yt';
-      cloud.textContent = acSt.loading ? '搜索中…' : (isCloud ? '重新搜云端' : '云端搜');
-      /* 也别再按输入框是否为空禁用 —— 浏览曲库时正是想「拿当前列表去云端搜一遍」。 */
-      cloud.disabled = !!acSt.loading;
-    }
-
-    function acGo(delta) {
-      const p = acSt.page + delta;
-      if (p < 1 || p > acSt.pages) return;
-      acSt.page = p;
-      if (acSt.src !== 'yt') {                 // 本地全集自己切页
-        acSt.pageItems = acSt.hits.slice((p - 1) * AC_PER, p * AC_PER);
-      }
-      renderAc();
-      /* 云端结果翻页要问服务器（本地页随便切） */
-      if (acSt.src === 'yt' && acSt.q) searchAsk(acSt.q, p);
-    }
-
-    /* v1.21.15：输入框空着时也把**服务器曲库**摊开可翻。
-       审查发现的缺口：以前必须先打字才出列表，「服务器上有的歌都还在」这件事
-       用户没法自己核对 —— 现在打开点歌台就能一页页翻，点哪首点哪首。 */
-    function showLibrary() {
-/* 曲库还没拉到时**不要静默把面板藏掉**。这里原来是 hideAc() 直接返回，
-         输入框下面什么都没有 —— 打开点歌台看到的就是一个空壳，
-         既不知道「服务器上有哪些歌」，也不知道「是还没加载」。
-         改成照常渲染，让空态分支去说人话。 */
-        if (!catalog.length) {
-          acSt.q = ''; acSt.src = 'lib'; acSt.rid = '';
-          acSt.loading = false; acSt.hits = [];
-          acSt.pages = 1; acSt.pageItems = [];
-          renderAc();
-          return;
-        }
-      const hits = catalog.map((c) => ({
-        t: String(c.title || ''), a: String(c.artist || ''), d: c.dur || 0,
-      }));
-      acSt.q = ''; acSt.hits = hits; acSt.src = 'lib'; acSt.loading = false;
-      acSt.rid = '';
-      acSt.pages = Math.max(1, Math.ceil(hits.length / AC_PER));
-      if (acSt.page > acSt.pages) acSt.page = 1;
-      acSt.pageItems = hits.slice((acSt.page - 1) * AC_PER, acSt.page * AC_PER);
-      renderAc();
-    }
-
-    function showAc() {
-      if (!reqInput) return;
-      const q = String(reqInput.value || '').trim();
-      if (!q) { showLibrary(); return; }
-      if (acSt.q !== q) {
-        acSt.q = q; acSt.page = 1; acSt.loading = false; acSt.rid = '';
-        const hits = acLocalHits(q);
-        acSt.hits = hits;
-        acSt.pages = Math.max(1, Math.ceil(hits.length / AC_PER));
-        acSt.pageItems = hits.slice(0, AC_PER);
-        acSt.src = hits.length ? 'repo' : '';
-      }
-      renderAc();
-      /* 本地没有 → 停 0.8 秒自动问一次云端（只问一次；改字才再问） */
-      if (!acSt.hits.length && !acSt.pageItems.length && !acSt.loading
-          && acSt.src !== 'yt' && q.length >= 2) {
-        clearTimeout(acAutoTimer);
-        acAutoTimer = setTimeout(() => {
-          if (acSt.q === q && !acSt.hits.length && !acSt.pageItems.length
-            && !acSt.loading) searchAsk(q, 1);
-        }, 800);
-      }
-    }
-
-
-    /* 页脚：上一页 / 下一页 / 云端搜 */
-    (function wireAcFoot() {
-      const prev = $('acPrev');
-      const next = $('acNext');
-      const cloud = $('acCloud');
-      if (prev) prev.addEventListener('click', () => acGo(-1));
-      if (next) next.addEventListener('click', () => acGo(1));
-      if (cloud) cloud.addEventListener('click', () => {
-        const q = String(reqInput && reqInput.value || '').trim();
-        if (!q) {
-          /* v1.21.16 把这颗按钮从「按空输入禁用」改成可点（浏览曲库时正是想拿
-             当前列表去云端搜一遍），却没给空输入的行为 —— 点了没反应，比禁用
-             还让人困惑。不许再一声不吭，如实说缺什么。 */
-          try { R.toast('先输入歌名，我才知道要全网找什么'); }
-          catch (_) { /* 忽略 */ }
-          return;
-        }
-        acSt.page = 1;
-        searchAsk(q, 1);
-      });
-    }());
-
-    // 联想：边打边出（120ms 防抖）；失焦 160ms 后收起（给点击留时间）
-    if (reqInput) {
-      let acTimer = null;
-      reqInput.addEventListener('input', () => {
-        ensureCatalog();
-        clearTimeout(acTimer);
-        acTimer = setTimeout(showAc, 120);
-      });
-      reqInput.addEventListener('blur', () => { setTimeout(hideAc, 160); });
-    }
 
     /* ---------------- 启动 ---------------- */
     render();
@@ -2056,10 +1689,9 @@
       norm: norm, visible: visible, render: render, say: say,
       publish: publish,
       myName: myName, setNick: setNick,
-      /* 搜索分页：测试要能直接喂搜索响应 */
-      acState: acSt, showAc: showAc, showLibrary: showLibrary,
-      onSearchMsg: onSearchMsg,
-      searchAsk: searchAsk, renderAc: renderAc,
+      /* v1.21.30：搜索分页 / 曲库联想那一整套导出随功能一起删了（acState、
+         showAc、showLibrary、onSearchMsg、searchAsk、renderAc、catalog、
+         ensureCatalog、hideAc 都已不存在）。 */
       SEARCH_NS: SEARCH_NS,
       /* 「歌已备好」这条链路：测试要能直接喂消息 */
       ready: ready, onReady: onReady, vodFor: vodFor, findItem: findItem,
@@ -2078,9 +1710,6 @@
       /* 最近一条播报的原文：离线时**不许**再说「云端主播马上安排」这种
        * 承诺（单子当时根本没发出去），测试要能直接读到这句。 */
       lastSay: () => lastSay,
-      /* 曲库链路：联想/AI 祝福/速点的数据与行为 */
-      catalog: () => catalog, ensureCatalog: ensureCatalog, 
-      showAc: showAc, hideAc: hideAc,
       /* 是否真的连上点歌台：mock 测试验不出来 retain 回放/遗嘱这些 broker 行为， */
       /* 真实 broker E2E 要靠它判断「可以开始断言了」，不靠猜时间。 */
       isSynced: () => synced,

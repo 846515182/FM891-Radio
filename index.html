@@ -33,10 +33,29 @@
     </header>
 
     <section class="player" aria-label="播放器">
-      <!-- 排队列表搬到左边一栏（透明），下面那一整块删掉（用户：下面就不要显示了） -->
+      <!-- v1.21.30 左栏重做（用户原话「把那个左边的排队改为那个波浪 下面从右往左
+           滚动字母多好 那个波浪动画做牛逼一点」）：
+           上面一条和圆盘同款的横向波浪（做宽做亮），下面一条**从右往左滚的字幕**，
+           滚的内容就是排队（歌名 + 谁点的）—— 一个位置同时保住「好看」和「我第几位」。
+           原来那张 <ol> 列表删掉，队列数据改由 app.js 拼成字幕条。 -->
       <aside class="queue-rail" id="queueRail" hidden aria-label="排队">
-        <div class="queue-rail-h">排 队</div>
-        <ol class="queue-rail-list" id="queueRailList"></ol>
+        <div class="rail-wave" id="railWave" aria-hidden="true">
+          <svg class="wave-svg" viewBox="0 0 320 96" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="wGradRail" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#22d3ee" />
+                <stop offset="50%" stop-color="#a78bfa" />
+                <stop offset="100%" stop-color="#f472b6" />
+              </linearGradient>
+            </defs>
+            <path class="wave-ghost g1" />
+            <path class="wave-ghost g2" />
+            <path class="wave-main" />
+          </svg>
+        </div>
+        <div class="rail-tick" id="railTick">
+          <div class="rail-tick-track" id="railTickTrack"></div>
+        </div>
         <p class="queue-rail-empty" id="queueRailEmpty">还没人排队</p>
       </aside>
 
@@ -47,8 +66,24 @@
                而 background 方案一旦不画，封面就只剩一个空盒子。 -->
           <!-- v1.21.19：首页大头像换成音乐波形。主播照片撤掉，
                封面中央是一组随歌变色、播放时跳动的波形柱 —— 电台该有的样子。 -->
-          <div class="waveform" id="coverWave" aria-hidden="true">
-            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+          <!-- v1.21.30：圆盘里那组柱状波形换成**一条横向波浪线**（开花的样子）。
+               用户原话「圆的音乐旋律动画可以改成那种一条线的波浪开花样子」。
+               形状不写死：app.js 每帧算多条正弦叠加 + 中间鼓起来的包络，
+               播放时鼓、暂停时摊平。三条路径是同一朵波的三层（主 + 两道残影）。 -->
+          <div class="wave" id="coverWave" aria-hidden="true">
+            <svg class="wave-svg" viewBox="0 0 320 96" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="wGradHero" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%" stop-color="#8b5cf6" />
+                  <stop offset="36%" stop-color="#22d3ee" />
+                  <stop offset="72%" stop-color="#f472b6" />
+                  <stop offset="100%" stop-color="#fbbf24" />
+                </linearGradient>
+              </defs>
+              <path class="wave-ghost g1" />
+              <path class="wave-ghost g2" />
+              <path class="wave-main" />
+            </svg>
           </div>
           <span class="status" id="status">正在接通直播…</span>
           <div class="cover-ring" aria-hidden="true"></div>
@@ -73,10 +108,15 @@
         <span class="vod-time" id="vodDur">--:--</span>
       </div>
 
+      <!-- v1.21.30：音量从滑杆改成 **− / ＋ 两颗按钮**（用户原话「音量控制滑动
+           很容易误碰 改成两个按钮加减音量」）。中间那截是**纯展示**（分段条 +
+           数字），点不中就不会被误碰；每次 ±10%。滑杆那一整套 range 样式与
+           input 事件监听一并删掉，音量值改由 app.js 的 volLevel 变量持有。 -->
       <section class="volume" aria-label="音量">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM5 9v6h4l5 5V4L9 9H5z"/></svg>
-        <input id="volume" type="range" min="0" max="1" step="0.01" value="0.85" aria-label="调节音量" />
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+        <button class="vol-btn" id="volDown" type="button" aria-label="音量减小">−</button>
+        <span class="vol-meter" id="volMeter" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+        <span class="vol-num" id="volNum" aria-live="polite">85</span>
+        <button class="vol-btn" id="volUp" type="button" aria-label="音量增大">＋</button>
       </section>
 
       <button class="dj-bubble" id="djBubble" type="button" aria-label="打开在线点歌">
@@ -96,9 +136,11 @@
 
     <footer>
       时光电台 · 拾起耳朵里的好时光<br />
-      <button class="link-btn" id="checkUpdateBtn" type="button">
-        检查更新 · <span id="verLabel">v…</span>
-      </button>
+      <!-- v1.21.30：底部那颗「检查更新」按钮删掉（用户原话「更新应该是自动弹出，
+           底部不用显示 检查更新」）。检查本身照常 —— 启动静默查一次 + 每 6 小时
+           再查一次，发现新版本就直接弹那个「发现新版本」对话框（见 app.js）。
+           版号留成纯文本：不点、不占一条按钮的热区，但排错时还看得见。 -->
+      <span class="ver-plain" id="verLabel">v…</span>
     </footer>
   </main>
 
@@ -161,36 +203,21 @@
           </div>
           <button class="primary req-go" id="reqGo" type="submit">点歌</button>
         </div>
-        <!-- v1.21.16：联想面板改成**正常流内**（原来 absolute，从创作卡里溢出去
-             盖住了 chips、我的歌卡和提示行 —— 用户原话「点歌流程都溢出来了」）。
-             现在它是上面那一行的下一个兄弟：打开时把下面的内容正常推下去，
-             抽屉本来就纵向滚动，什么都不会被盖住、也不会凭空消失一块。 -->
-        <div class="ac-panel" id="acPanel" hidden>
-          <ul class="ac-list" id="reqAc"></ul>
-          <div class="ac-foot">
-            <button type="button" class="ac-pg" id="acPrev">上一页</button>
-            <span class="ac-pg-n" id="acPage">1/1</span>
-            <button type="button" class="ac-pg" id="acNext">下一页</button>
-            <button type="button" class="ac-cloud" id="acCloud">云端搜</button>
-          </div>
-        </div>
-        <!-- 曲库常听：横向一排 -->
-        <div class="req-chips" id="reqChips" hidden></div>
-        <!-- v1.21.12：这里原来还有「送给谁 + 祝福语 + AI 写祝福」。用户原话
-             「加一句想说的有啥用，没用就删掉相关的代码」—— 整块移除：控件、AI 祝福
-             拉取、云端祝福词本，以及播报文案里的「送给…：…」都一并去掉。 -->
-        <details class="req-more" id="reqMore">
-          <summary>更多 · 主播性格<em class="more-val" id="moodVal">自动</em></summary>
-          <!-- 主播性格：**你自己选**。时段自动只是兜底（用户原话：用户自己选 DJ 的
-               性格，比我们替他决定好得多）。选中值跟着这单一起发给云端。 -->
-          <div class="mood-row" id="moodRow" role="radiogroup" aria-label="主播性格">
-            <span class="mood-lb">主播</span>
-            <button class="mood auto" type="button" data-mood="">自动</button>
-            <button class="mood" type="button" data-mood="announce">报幕</button>
-            <button class="mood" type="button" data-mood="chat">闲聊</button>
-            <button class="mood" type="button" data-mood="night">深夜</button>
-          </div>
-        </details>
+        <!-- v1.21.30 整块删除（用户原话「点歌搜索下面那个框有啥用 里面显示歌曲
+             感觉没啥用 删掉相关代码」，并确认「两个都删」）：
+               ① 联想面板 #acPanel（打字就弹的歌曲列表 + 上一页/下一页/云端搜）；
+               ② 曲库常听 #reqChips（横向一排速点歌）。
+             一并删掉的还有它们的 JS（acLocalHits / renderAc / paintAcFoot / acGo /
+             searchAsk / showAc / showLibrary / hideAc / renderChips / pickSong，
+             以及只为它们服务的 catalog.json 拉取），和 CSS（.ac-* / .req-chips /
+             .chip）。
+             点歌的主路不受影响：**写歌名 → 点「点歌」→ 云端全网找**，
+             找到就弹「挑个版本」。搜索服务端接口 op=q 保留（live-search 联测还在用）。 -->
+        <!-- v1.21.30：主播性格选择器整块删除（用户原话「主播性格感觉也没啥用…
+             这个不应该服务端默认的吗 用户app 可以选 有啥用」）。
+             性格改回**纯服务端按时段默认**：server.py 的 dj_mood() 按 6-17 / 17-21 /
+             21-6 自己切 announce/chat/night，客户端不再发 mood 字段。
+             老设备上的 fm891.mood 台账键在启动时清掉（request.js）。 -->
       </form>
       </div>
       <!-- 我的歌：自己的 pending 单置顶，位次 + 预计时间 + 直接操作 -->
